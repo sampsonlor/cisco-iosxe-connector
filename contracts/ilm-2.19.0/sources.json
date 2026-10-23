@@ -86,6 +86,24 @@
       "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/common/properties/DataAttributeProperties.java",
       "sha256": "d01ad1d848e199adfba13f4bb3c8607aeb4b6d70b27e06d0cddcd4332c8d73a1",
       "gitBlob": "7207046b78a7f42ed3d6bbfd93fb4e37795483c0"
+    },
+    {
+      "path": "java/MetadataAttribute.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/common/MetadataAttribute.java",
+      "sha256": "0c324a58f87e3bd0d6eae72f99bdc27d3068105afd2fb0ab9b6e1577d8f4f84c",
+      "gitBlob": "ae68b4c38afc2c1713894ced4f2b150c2460fcbc"
+    },
+    {
+      "path": "java/MetadataAttributeProperties.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/common/properties/MetadataAttributeProperties.java",
+      "sha256": "1df6ec9bd42652ad1c45f7fe1d518b62555aeaf971507d303f4b2b8ec04d14b7",
+      "gitBlob": "60f2fdcae3f96b22e79bf672548d5badf0d969bd"
+    },
+    {
+      "path": "java/MetadataAttributeV3.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/v3/MetadataAttributeV3.java",
+      "sha256": "2ea6f002adc70d3eae1b115d263609e8f5d803debc57cf2d9b98feceaecb89ae",
+      "gitBlob": "2e695c961732e7c5e659669a3531a145f9f59340"
     }
   ]
 }

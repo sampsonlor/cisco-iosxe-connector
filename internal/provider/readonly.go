@@ -31,9 +31,11 @@ type DeviceAccess struct {
 	Device   ManagedDevice
 }
 type PublicCertificate struct {
-	DER     []byte
-	WithKey bool
+	DER      []byte
+	WithKey  bool
+	Bindings []TrustpointBinding
 }
+type TrustpointBinding struct{ Trustpoint, Role string }
 type InventorySnapshot struct {
 	Complete     bool
 	Certificates []PublicCertificate
@@ -249,11 +251,16 @@ func (p *readOnlyProvider) GetLocationDetail(ctx context.Context, id string, in 
 		if len(c.DER) > 1<<20 || totalBytes > 4<<20 {
 			return nil, &shared.Error{Status: 502, ErrorCode: "INVENTORY_INVALID", Detail: "invalid public certificate inventory"}
 		}
-		if _, err := x509.ParseCertificate(c.DER); err != nil {
+		parsed, err := x509.ParseCertificate(c.DER)
+		if err != nil {
 			return nil, &shared.Error{Status: 502, ErrorCode: "INVENTORY_INVALID", Detail: "invalid public certificate inventory"}
 		}
 		typ := mdl.CERTIFICATETYPE_X_509
-		certs = append(certs, mdl.CertificateLocationDto{CertificateData: base64.StdEncoding.EncodeToString(c.DER), CertificateType: &typ, WithKey: c.WithKey})
+		metadata, err := inventoryMetadata(c, parsed)
+		if err != nil {
+			return nil, &shared.Error{Status: 502, ErrorCode: "INVENTORY_INVALID", Detail: "invalid certificate binding metadata"}
+		}
+		certs = append(certs, mdl.CertificateLocationDto{CertificateData: base64.StdEncoding.EncodeToString(c.DER), CertificateType: &typ, WithKey: c.WithKey, Metadata: metadata})
 	}
 	return &mdl.LocationDetailResponseDto{Certificates: certs, MultipleEntries: true, SupportKeyManagement: false}, nil
 }
