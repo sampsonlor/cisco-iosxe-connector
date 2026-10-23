@@ -74,6 +74,18 @@
       "upstreamPath": "src/main/java/com/otilm/api/model/core/certificate/CertificateType.java",
       "sha256": "4819a94ca80c4772bc33bc9638938a9152e71cdfc3a0eee94d8666baba64d606",
       "gitBlob": "db839a0e8a9b3ea1b0413c83c13230a8880ef65b"
+    },
+    {
+      "path": "java/DataAttributeV3.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/v3/DataAttributeV3.java",
+      "sha256": "4337e0cd227698f6700f7e1a52525858a12a20dca2e2705ecd3511ceb04914ad",
+      "gitBlob": "78269ca9d4a9399f7833b4d6005ff83ef65a0c50"
+    },
+    {
+      "path": "java/DataAttributeProperties.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/common/attribute/common/properties/DataAttributeProperties.java",
+      "sha256": "d01ad1d848e199adfba13f4bb3c8607aeb4b6d70b27e06d0cddcd4332c8d73a1",
+      "gitBlob": "7207046b78a7f42ed3d6bbfd93fb4e37795483c0"
     }
   ]
 }

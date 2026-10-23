@@ -25,9 +25,9 @@ const (
 
 // DevicePolicy is supplied by an operator, never by an ILM request.
 type DevicePolicy struct {
-	Target             netip.Addr
-	ActiveTrustpoint   string
-	StagingTrustpoints []string
+	Target             netip.Addr `json:"target"`
+	ActiveTrustpoint   string     `json:"activeTrustpoint"`
+	StagingTrustpoints []string   `json:"stagingTrustpoints,omitempty"`
 }
 
 // EntityResolver returns the immutable device binding for a stored entity.

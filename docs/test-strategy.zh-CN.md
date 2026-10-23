@@ -4,7 +4,7 @@
 环境条件可以通过后续测试逐项关闭；单个写入阶段只要求其自身前置条件满足。
 离线测试不等待设备 NTP、NETCONF、DNS、RA 或模板配置完成。
 
-当前实现仓库检查、SDK 行为表征和连接器 HTTP 边界测试。`tests/catalog.json` 是用例清单；
+当前实现仓库检查、SDK 行为表征、HTTP 边界和只读 Provider/SQLite 测试。`tests/catalog.json` 是用例清单；
 `implemented` 表示有可执行测试，`planned` 表示验收目标仍待实现。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。
 
@@ -18,7 +18,8 @@ CI 通过不等于所有清单用例通过，也不等于已完成生产自动�
 | P3：切换与恢复 | PR 故障注入 + 手动维护窗口 | 独立 TLS、切换超时、回滚、持久化冲突、进程崩溃恢复 | 新证书生效、旧证书可恢复；保存失败不得标记 COMMITTED |
 | P4：调度与交付 | PR 模拟时钟；受保护 release 流程 | ACME 订单恢复、续期抖动/退避、重启、SBOM、镜像扫描与签名 | 功能门槛和 release 门槛全部满足，才允许发布预览包 |
 
-目前启用 P0 与 P1 中的离线 HTTP 边界检查，详见 [边界实现](provider-boundary.md)。
+目前启用 P0 与 P1 中的离线 HTTP 边界、Entity 持久化及只读 Provider 检查，
+详见 [边界实现](provider-boundary.md) 和 [只读 Provider](readonly-provider.md)。
 设备发现及后续阶段仍为验收设计，不以空实现、`skip` 或始终成功的 mock 代替。
 发布镜像与设备部署分别设门槛。
 
