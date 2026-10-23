@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -17,14 +18,26 @@ func inventoryMetadata(c PublicCertificate, parsed *x509.Certificate) ([]mdl.Met
 	if len(c.Bindings) > 64 || c.WithKey {
 		return nil, errors.New("unsupported binding or key proof")
 	}
-	var roles []string
+	var roles, purposes []string
+	aliasPresent := false
 	seen := map[string]bool{}
 	for _, b := range c.Bindings {
 		if !cliToken.MatchString(b.Trustpoint) || seen[b.Trustpoint] {
 			return nil, errors.New("invalid Trustpoint binding")
 		}
 		seen[b.Trustpoint] = true
-		if parsed.IsCA {
+		if b.SelfSignedIdentity {
+			if !parsed.IsCA || !bytes.Equal(parsed.RawIssuer, parsed.RawSubject) || parsed.CheckSignature(parsed.SignatureAlgorithm, parsed.RawTBSCertificate, parsed.Signature) != nil {
+				return nil, errors.New("invalid self-signed identity proof")
+			}
+			aliasPresent = true
+			purposes = append(purposes, b.Trustpoint+"=CA_AND_IDENTITY")
+		} else if parsed.IsCA {
+			purposes = append(purposes, b.Trustpoint+"=CA")
+		} else {
+			purposes = append(purposes, b.Trustpoint+"=IDENTITY")
+		}
+		if parsed.IsCA && !b.SelfSignedIdentity {
 			if b.Role != "CA" {
 				return nil, errors.New("invalid CA role")
 			}
@@ -43,7 +56,12 @@ func inventoryMetadata(c PublicCertificate, parsed *x509.Certificate) ([]mdl.Met
 	if parsed.IsCA {
 		kind = "CA"
 	}
-	return []mdl.MetadataAttribute{inventoryAttribute("0201", "trustpointRoles", roles), inventoryAttribute("0202", "certificateKind", []string{kind}), inventoryAttribute("0203", "sha256Fingerprint", []string{hex.EncodeToString(h[:])}), inventoryAttribute("0204", "keyAssociation", []string{"UNKNOWN"})}, nil
+	metadata := []mdl.MetadataAttribute{inventoryAttribute("0201", "trustpointRoles", roles), inventoryAttribute("0202", "certificateKind", []string{kind}), inventoryAttribute("0203", "sha256Fingerprint", []string{hex.EncodeToString(h[:])}), inventoryAttribute("0204", "keyAssociation", []string{"UNKNOWN"})}
+	if aliasPresent {
+		sort.Strings(purposes)
+		metadata = append(metadata, inventoryAttribute("0205", "trustpointPurposes", purposes))
+	}
+	return metadata, nil
 }
 func inventoryAttribute(suffix, name string, values []string) mdl.MetadataAttribute {
 	// Use only properties present in the pinned 2.19.0 contract. Location-local

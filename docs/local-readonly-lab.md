@@ -113,6 +113,16 @@ An observed failure produces `FAIL`; missing environment evidence produces
 `INCOMPLETE`. Both return nonzero status. The report must be reviewed before
 #6 / L-001 is closed; no offline test substitutes for that acceptance.
 
+## Offline reply replay
+
+`go run ./cmd/iosxe-lab-replay C:\PrivateLab\run-001\report.json` revalidates
+captured reply semantics with the current parser without connecting anywhere.
+It requires a completed exec for every inventory read, even when an older
+parser rejected a now-supported display form. The summary is explicitly
+`OFFLINE_REPLAY`; it cannot establish current device state, repeated inventory
+stability, TLS availability, AAA restrictions or live acceptance. Real replies
+remain private; only generated equivalents belong in regression tests.
+
 Sources:
 
 - [Cisco show clock semantics](https://www.cisco.com/E-Learning/bulk/public/tac/cim/cib/using_cisco_ios_software/cmdrefs/show_clock.htm)

@@ -156,7 +156,7 @@ func bindingXML(raw []byte) (string, error) {
 	return name, nil
 }
 
-func checkPKIXML(raw []byte, groups map[string][][]byte) error {
+func checkPKIXML(raw []byte, groups map[string][]pemCertificate) error {
 	d, err := dataXML(raw)
 	if err != nil {
 		return err
@@ -211,7 +211,8 @@ func checkPKIXML(raw []byte, groups map[string][][]byte) error {
 				return ErrIncomplete
 			}
 			index := -1
-			for i, der := range groups[name] {
+			for i, entry := range groups[name] {
+				der := entry.der
 				cert, _ := x509.ParseCertificate(der)
 				m := md5.Sum(der)
 				if bytes.Equal(h, m[:]) && cert.SerialNumber.Cmp(number) == 0 && cert.IsCA == (isCA == "true") {
@@ -240,8 +241,8 @@ func checkPKIXML(raw []byte, groups map[string][][]byte) error {
 					return err
 				}
 				found := false
-				for _, der := range groups[tp] {
-					if bytes.Equal(der, groups[name][index]) {
+				for _, entry := range groups[tp] {
+					if bytes.Equal(entry.der, groups[name][index].der) {
 						found = true
 					}
 				}

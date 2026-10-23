@@ -1,7 +1,11 @@
 package inventory_test
 
 import (
+	"context"
+	"encoding/json"
 	"encoding/pem"
+	"github.com/sampsonlor/cisco-iosxe-connector/internal/provider"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -63,5 +67,47 @@ func TestSelfSignedAliasRequiresExplicitMatchingProof(t *testing.T) {
 	f.e.Raw[device.ReadCertificates] = []byte(strings.Replace(raw, "% Self-signed CA certificate:", "% CA certificate:", 1))
 	if s, err := inventory.Parse(f.e, nil); err == nil || s.Complete {
 		t.Fatal("general-purpose CA accepted without self-signed alias proof")
+	}
+}
+
+func TestSelfSignedIdentityProviderMetadata(t *testing.T) {
+	f := selfSignedFixture(t)
+	reader, err := inventory.NewReader(&source{evidence: f.e}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := reader.ReadHTTPS(context.Background(), access())
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliases := 0
+	for _, c := range s.Certificates {
+		for _, b := range c.Bindings {
+			if b.SelfSignedIdentity {
+				aliases++
+			}
+		}
+	}
+	if aliases != 1 {
+		t.Fatal("reader lost dual purpose")
+	}
+	store, err := provider.OpenEntityStore(filepath.Join(t.TempDir(), "entities.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	h, err := provider.NewReadOnlyHandler(store, provider.ReadOnlyConfig{Devices: map[string]provider.ManagedDevice{"router-a": access().Device}}, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := serve(h, "POST", "/v1/entityProvider/entities", `{"name":"synthetic.example.test","kind":"iosxe","attributes":[`+attr("0101", "deviceId", "router-a")+`,`+attr("0102", "targetAddress", "192.0.2.10")+`]}`)
+	// Extract the generated entity without depending on its random UUID.
+	var entity struct{ Uuid string }
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &entity) != nil {
+		t.Fatal("entity creation failed")
+	}
+	w = serve(h, "POST", "/v1/entityProvider/entities/"+entity.Uuid+"/locations", `{"locationAttributes":[`+attr("0103", "service", "https")+`]}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "trustpointPurposes") || !strings.Contains(w.Body.String(), "UNMANAGED=CA_AND_IDENTITY") {
+		t.Fatalf("dual purpose mapping: %d %s", w.Code, w.Body)
 	}
 }

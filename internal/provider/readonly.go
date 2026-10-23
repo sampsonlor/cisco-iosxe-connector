@@ -35,7 +35,10 @@ type PublicCertificate struct {
 	WithKey  bool
 	Bindings []TrustpointBinding
 }
-type TrustpointBinding struct{ Trustpoint, Role string }
+type TrustpointBinding struct {
+	Trustpoint, Role   string
+	SelfSignedIdentity bool
+}
 type InventorySnapshot struct {
 	Complete     bool
 	Certificates []PublicCertificate

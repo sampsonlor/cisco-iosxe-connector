@@ -177,7 +177,7 @@ func classifyCLI(raw []byte, runErr error, overflow bool) error {
 		if strings.HasPrefix(line, "% invalid input") || strings.HasPrefix(line, "% unrecognized command") {
 			return ErrUnsupported
 		}
-		if strings.HasPrefix(line, "%") && line != "% general purpose certificate:" && line != "% ca certificate:" && line != "% only export the ca certificate in pem format." && !unenrolledNotice.MatchString(line) {
+		if strings.HasPrefix(line, "%") && line != "% general purpose certificate:" && line != "% ca certificate:" && line != "% self-signed ca certificate:" && line != "% only export the ca certificate in pem format." && !unenrolledNotice.MatchString(line) {
 			return ErrRead
 		}
 	}

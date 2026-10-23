@@ -46,6 +46,11 @@ echo/trailing prompt are supported. CA-only notices are supported when a
 complete CA certificate is present. Paging, control characters, unknown `%`
 messages, failed CA export, truncation, unknown purpose markers, naked PEM,
 duplicate groups/certificates and namespace/schema mismatches fail closed.
+The documented self-signed alias pair is the sole duplicate-block exception:
+`Self-signed CA certificate` followed by an identical `General Purpose
+Certificate` in the same Trustpoint. The CA flag, issuer/subject equality and
+self-signature must validate. It becomes one DER occurrence with both CA and
+identity purposes; a general-purpose CA without that explicit proof is rejected.
 Empty/unenrolled groups without complete certificate evidence are incomplete.
 The first version requires all observed Trustpoint groups to be accounted for;
 it does not silently drop unreadable unrelated groups.
@@ -64,6 +69,11 @@ ambiguous envelopes and duplicate required leaves are rejected.
 | ROLLBACK | The same explicit assignment, in the staging pool or the configured baseline active Trustpoint, currently inactive |
 | INACTIVE | A leaf with no active binding or matching explicit assignment |
 | CA | Parsed X.509 CA flag, consistent with the PEM purpose marker |
+
+A verified self-signed CA/identity alias retains its CA flag but its service
+role follows the identity purpose and independent binding. It is represented
+internally as `CA_IDENTITY`; it is never classified active merely for being
+self-signed. These public display aliases do not prove private-key possession.
 
 Assignments accept only STAGED/ROLLBACK. A missing certificate, changed
 fingerprint, duplicate assignment, unapproved slot or active/rollback conflict
@@ -109,7 +119,9 @@ Offline `Parse` returns one observation per certificate/Trustpoint occurrence.
 The Reader deduplicates identical DER for ILM, retaining every occurrence in
 sorted `trustpointRoles` metadata (`NAME=ROLE`). Other metadata are
 `certificateKind`, `sha256Fingerprint` and `keyAssociation`. Stable metadata
-UUID suffixes are 0201–0204 under the existing attribute namespace. Metadata
+UUID suffixes are 0201–0204 under the existing attribute namespace. A verified
+dual-purpose alias additionally emits `trustpointPurposes` (0205), preserving
+`NAME=CA_AND_IDENTITY` alongside the existing role strings and CA kind. Metadata
 uses numeric version 3, schemaVersion v3, type meta, string content, local
 scope and overwrite semantics from the pinned ILM 2.19.0 sources. No extra
 Location fields, mutable attributes or invented wire enum values are added.
@@ -125,6 +137,7 @@ no live device test in this item. Generated test keys and certificates exist
 only at runtime; real transcripts and fingerprints must remain private.
 
 - [Cisco PEM and Trustpoint command formats](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/security/s1/sec-s1-cr-book/sec-cr-s3.html)
+- [Cisco self-signed CA/general-purpose identical display example](https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cucme/CUCIS_API/CUCIS_API_Guide/CUCISA_USR.html) (output-format evidence; the connector does not execute the example's configuration/export commands)
 - [Cisco HTTPS state and binding fields](https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/https/configuration/xe-16-9/https-xe-16-9-book/HTTPS--HTTP_Server_and_Client_with_SSL_3-0.html) (field-format evidence only; legacy cipher examples are not policy recommendations)
 - [Pinned 26.1 YANG paths and hashes](../contracts/iosxe-26.1-reference.json)
 - [Pinned 2.19.0 MetadataAttributeV3](https://github.com/OmniTrustILM/interfaces/blob/e62233777518296f70a151cf766dde5e1a6cea2d/src/main/java/com/otilm/api/model/common/attribute/v3/MetadataAttributeV3.java)

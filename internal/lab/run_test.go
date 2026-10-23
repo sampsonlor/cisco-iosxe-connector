@@ -103,3 +103,23 @@ func TestNETCONFIdentityFailureStopsLab(t *testing.T) {
 		t.Fatal("NETCONF identity rejection did not stop lab")
 	}
 }
+
+func TestReplayRequiresCompletedCapturedReads(t *testing.T) {
+	_, der, _ := tlsFixture(t)
+	src := &fakeCollector{der: der}
+	e, err := src.Collect(context.Background(), "router-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Report{Status: "FAIL"}
+	for op, raw := range e.Raw {
+		r.WireReads = append(r.WireReads, ReadObservation{Operation: op, Data: raw, Complete: true, Accepted: false})
+	}
+	if s, err := Replay(r); err != nil || !s.Complete {
+		t.Fatal("complete captured reads could not be revalidated")
+	}
+	r.WireReads[0].Complete = false
+	if s, err := Replay(r); err == nil || s.Complete {
+		t.Fatal("incomplete wire execution was promoted")
+	}
+}
