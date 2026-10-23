@@ -34,7 +34,7 @@ func run() int {
 	hostname := flag.String("hostname", "", "approved HTTPS DNS name")
 	username := flag.String("username", "", "SSH username")
 	sshPort := flag.Uint("ssh-port", 22, "approved CLI port")
-	netconfPort := flag.Uint("netconf-port", 0, "approved NETCONF port; used only if already configured")
+	netconfPort := flag.Uint("netconf-port", 0, "approved NETCONF port; zero selects CLI-only acceptance")
 	httpsPort := flag.Uint("https-port", 443, "approved HTTPS port")
 	keyPath := flag.String("host-key-file", "", "trusted OpenSSH public host key file")
 	directory := flag.String("evidence-dir", "", "private absolute directory outside Git checkouts")

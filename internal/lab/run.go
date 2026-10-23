@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +25,7 @@ type Config struct {
 	NETCONF                        func(context.Context) (device.Evidence, error)
 }
 type Report struct {
+	Scope                             Scope
 	WireReads                         []ReadObservation
 	Target                            map[string]string
 	Started, Finished                 time.Time
@@ -46,6 +46,10 @@ type ReadObservation struct {
 
 func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 	r = Report{Started: time.Now().UTC(), Status: "INCOMPLETE", Checks: map[string]bool{}}
+	r.Scope = CLIOnly
+	if cfg.NETCONF != nil {
+		r.Scope = NETCONFAndCLI
+	}
 	defer func() {
 		total := 0
 		valid := true
@@ -57,6 +61,11 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 		}
 		r.Checks["no-mutation-requests"] = total > 0 && valid
 		r.Finished = time.Now().UTC()
+		if r.Status == "PASS" {
+			a := Assess(r, r.Scope)
+			r.Status, r.Checks = a.Status, a.Checks
+			r.Notes = append(r.Notes, a.Notes...)
+		}
 	}()
 	var err error
 	r.Readiness, err = c.Readiness(ctx, cfg.DeviceID)
@@ -65,11 +74,6 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 		r.Notes = append(r.Notes, "readiness: "+safeError(err))
 		return r
 	}
-	clock := string(r.Readiness.Raw[device.ReadClock])
-	r.Checks["clock-recorded"] = regexp.MustCompile(`(?m)[*. ]?[0-9]{2}:[0-9]{2}:[0-9]{2}`).MatchString(clock) && (strings.Contains(clock, "Time source is") || strings.Contains(clock, "No time source"))
-	r.Checks["time-synchronized"] = strings.Contains(string(r.Readiness.Raw[device.ReadNTP]), "Clock is synchronized")
-	r.Notes = append(r.Notes, "Account write restrictions require separate operator/AAA policy evidence; no mutating permission test was attempted.")
-	r.Checks["restricted-identity"] = false
 	r.Before, err = c.Collect(ctx, cfg.DeviceID)
 	if err != nil {
 		r.Status = "FAIL"
@@ -83,14 +87,9 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 		return r
 	}
 	r.Checks["inventory"] = true
-	for _, line := range strings.Split(string(r.Readiness.Raw[device.ReadProtocolConfig]), "\n") {
-		if strings.TrimSpace(line) != "netconf-yang" {
-			continue
-		}
-		if cfg.NETCONF == nil {
-			r.Notes = append(r.Notes, "NETCONF is configured but no approved endpoint was supplied.")
-			break
-		}
+	// Explicit endpoint selection defines scope. An empty CLI filter cannot
+	// prove a protocol is disabled, or excuse a selected NETCONF probe.
+	if cfg.NETCONF != nil {
 		r.NETCONF, err = cfg.NETCONF(ctx)
 		if err != nil {
 			r.Notes = append(r.Notes, "netconf: "+safeError(err))
@@ -98,27 +97,7 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 				r.Status = "FAIL"
 				return r
 			}
-			break
 		}
-		combined := r.Before
-		combined.Raw = map[device.Operation][]byte{}
-		combined.Capabilities = map[device.Operation]device.Capability{}
-		for op, raw := range r.Before.Raw {
-			combined.Raw[op] = raw
-		}
-		for op, cap := range r.Before.Capabilities {
-			combined.Capabilities[op] = cap
-		}
-		for _, op := range []device.Operation{device.ReadPKI, device.ReadBinding} {
-			combined.Raw[op] = r.NETCONF.Raw[op]
-			combined.Capabilities[op] = r.NETCONF.Capabilities[op]
-		}
-		_, parseErr := inventory.Parse(combined, nil)
-		r.Checks["models"] = modelRevisionsPresent(r.NETCONF.NETCONFHello) && parseErr == nil
-		break
-	}
-	if !r.Checks["models"] {
-		r.Notes = append(r.Notes, "Live NETCONF model revisions/semantics not fully verified; no protocol was enabled.")
 	}
 	var expected []byte
 	for _, cert := range before.Certificates {
@@ -156,13 +135,8 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 	if len(r.NETCONF.Audit) > 0 {
 		r.Checks["no-mutation-requests"] = r.Checks["no-mutation-requests"] && readOnlyAudit(r.NETCONF.Audit)
 	}
-	// PASS requires every gate. Successful reads do not prove no write privilege.
+	// The deferred assessment evaluates evidence against the selected scope.
 	r.Status = "PASS"
-	for _, gate := range []string{"clock-recorded", "inventory", "tls-matches", "stable-baseline", "no-mutation-requests", "models", "restricted-identity"} {
-		if !r.Checks[gate] {
-			r.Status = "INCOMPLETE"
-		}
-	}
 	return r
 }
 func safeError(err error) string {
@@ -222,35 +196,45 @@ func modelRevisionsPresent(raw []byte) bool {
 
 // Evidence stays outside every Git checkout and never overwrites an old run.
 func ValidateEvidenceDirectory(directory string) error {
-	if !filepath.IsAbs(directory) {
-		return errors.New("evidence directory must be absolute")
-	}
-	resolved, err := filepath.EvalSymlinks(directory)
+	resolved, err := privateDirectory(directory)
 	if err != nil {
-		return errors.New("evidence directory must exist")
-	}
-	for path := resolved; ; path = filepath.Dir(path) {
-		if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
-			return errors.New("evidence directory cannot be in a Git checkout")
-		}
-		if filepath.Dir(path) == path {
-			break
-		}
+		return err
 	}
 	if _, err = os.Lstat(filepath.Join(resolved, "report.json")); !errors.Is(err, os.ErrNotExist) {
 		return errors.New("evidence report already exists or is inaccessible")
 	}
 	return nil
 }
+func privateDirectory(directory string) (string, error) {
+	if !filepath.IsAbs(directory) {
+		return "", errors.New("evidence directory must be absolute")
+	}
+	resolved, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		return "", errors.New("evidence directory must exist")
+	}
+	for path := resolved; ; path = filepath.Dir(path) {
+		if _, err := os.Lstat(filepath.Join(path, ".git")); err == nil {
+			return "", errors.New("evidence directory cannot be in a Git checkout")
+		}
+		if filepath.Dir(path) == path {
+			break
+		}
+	}
+	return resolved, nil
+}
 func WriteReport(directory string, r Report) (string, error) {
 	if err := ValidateEvidenceDirectory(directory); err != nil {
 		return "", err
 	}
-	data, err := json.MarshalIndent(r, "", "  ")
+	return writePrivateJSON(directory, "report.json", r)
+}
+func writePrivateJSON(directory, name string, value any) (string, error) {
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return "", errors.New("cannot encode private evidence")
 	}
-	path := filepath.Join(directory, "report.json")
+	path := filepath.Join(directory, name)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return "", errors.New("cannot create private evidence")

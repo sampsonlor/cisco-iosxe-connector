@@ -15,7 +15,7 @@ directory outside any Git checkout. Example values below are synthetic:
 go build -o C:\PrivateLab\iosxe-lab.exe ./cmd/iosxe-lab
 C:\PrivateLab\iosxe-lab.exe `
   --address 192.0.2.10 --hostname router.example.test `
-  --username reader --ssh-port 22 --https-port 443 `
+  --username operator --ssh-port 22 --https-port 443 `
   --host-key-file C:\PrivateLab\trusted-router.pub `
   --evidence-dir C:\PrivateLab\run-001
 ```
@@ -59,13 +59,16 @@ Each fixed command uses its own pinned SSH connection; servers that end the
 connection after one exec are supported without retrying any command.
 There is no arbitrary-command API, interactive shell, `enable`, terminal
 setting, key generation, CSR, import, activation or save operation. Empty
-output from the protocol configuration filter is a valid absence of explicit
-configuration, not a valid empty certificate inventory. Readiness permission
+output from the protocol configuration filter is recorded as a limited CLI
+observation. It does not establish that NETCONF is disabled, nor constitute an
+empty certificate inventory. Readiness permission
 failure stops collection; no identity escalation or automatic retry occurs.
 
 The NTP-disabled notice and `No time source` are retained as explicit readiness
-observations. Recording a clock is distinct from proving time synchronization;
-an unsynchronized clock cannot satisfy a later issuance/staging prerequisite.
+observations. Recording a clock is distinct from proving time synchronization.
+For #6, the operator deferred NTP to the next live test (#15 / L-002); it does
+not block this read-only acceptance. Time synchronization remains a prerequisite
+before a later live issuance/staging operation.
 
 The tool captures readiness, reads the inventory, makes an independent TLS
 handshake, and then repeats the inventory and TLS read. It compares the active
@@ -76,12 +79,15 @@ separately against system trust. It sends no HTTP application data. A pinned
 baseline match must never be reported as proof of a trusted CA chain, expiry
 policy, revocation or future renewal eligibility.
 
-`--netconf-port` is optional and defaults to zero. It is used only when the
-readiness output explicitly contains the already-configured `netconf-yang`
-line. No protocol is enabled. When authorized and supplied, the probe retains
+`--netconf-port` is optional and defaults to zero, selecting `cli-only` scope.
+A nonzero approved port selects `netconf-and-cli` and attempts that endpoint
+regardless of the CLI filter result. No protocol is enabled. The probe retains
 the validated server hello and the existing filtered PKI/binding reads;
 actual model revision presence and inventory semantics are checked together.
-Absent or unverified models remain visible as an incomplete gate.
+Absent or unverified models prevent PASS for `netconf-and-cli`. They are not
+required for `cli-only`, whose report explicitly states that NETCONF and model
+revisions were not tested. Authentication/host-key/permission failures on a
+selected endpoint still stop the run.
 
 ## Result scope
 
@@ -96,22 +102,51 @@ exec finished; `Accepted` records the transport's validation decision. Neither
 field is a healthy inventory claim. Default collector failures still discard
 `Evidence.Raw`; diagnostic replies never feed the Provider's InventoryReader.
 
-`PASS` requires every recorded gate. Technical observations can succeed while
-overall status remains `INCOMPLETE`, especially when NETCONF models are not
-available or account restrictions have not been independently established.
-The tool deliberately cannot prove restricted write privilege by executing
-configuration commands. A privilege-15 account used only for reads is not
-classified as a restricted identity. Review this gate against private AAA
-policy evidence or use an approved restricted account before accepting it.
+`PASS` requires all gates for the explicitly selected scope: recorded clock
+and completed readiness, complete repeated inventory, matching independent TLS
+DER/name, stable baseline, and an audit containing only fixed read operations.
+Selected NETCONF additionally requires actual model revisions and matching
+inventory semantics. CA trust and time synchronization are separate observations.
+
+The operator-approved account may have read/write privileges, including level
+15. Acceptance evaluates the operations performed, not proof that the account
+cannot write. No configuration command is sent to test write permission. This
+acceptance does not grant future write authorization: renewal needs phase-specific
+permissions for keys/CSR/import, with separate activation/persistence controls.
 
 `no-mutation-requests` describes only this tool's allowlisted requests. Matching
 before/after snapshots cannot prove that no other actor changed the device
 between reads. Independently retained device-side AAA accounting can strengthen
 the audit; the tool does not enable accounting or retrieve unrelated logs.
 
-An observed failure produces `FAIL`; missing environment evidence produces
+An observed failure produces `FAIL`; missing required scope evidence produces
 `INCOMPLETE`. Both return nonzero status. The report must be reviewed before
 #6 / L-001 is closed; no offline test substitutes for that acceptance.
+
+## Reassessing a completed recorded run
+
+When the operator changes acceptance scope, preserve the original live report
+and create a separate assessment:
+
+```powershell
+go build -o C:\PrivateLab\iosxe-lab-assess.exe ./cmd/iosxe-lab-assess
+C:\PrivateLab\iosxe-lab-assess.exe --scope cli-only C:\PrivateLab\run-001\report.json
+```
+
+This creates `acceptance-assessment.json` exclusively beside the private report,
+with its original SHA-256, policy version and evaluation time. It revalidates
+the recorded complete inventories, operation audit and TLS evidence; it does
+not open a connection or rerun any live check. Failed executions, conflicting
+selected scopes, incomplete reads or inconsistent evidence cannot become PASS.
+Neither file may be overwritten or placed in a Git checkout. For legacy reports
+without a scope field, the operator must verify the recorded execution mode
+before selecting scope; the assessment is not an independent attestation of
+the recording's authenticity or present device state.
+
+Private reference `L001-20261023-run04` records the completed CLI-only live run.
+Its original broader-gate report remains `INCOMPLETE`; a separate `read-only-v2`
+assessment accepts the operator-approved CLI scope with NTP deferred. Live
+NETCONF, ILM Core registration and issuance/deployment remain untested.
 
 ## Offline reply replay
 

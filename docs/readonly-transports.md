@@ -123,7 +123,8 @@ tests cover framing limits, namespaces, protocol errors, CLI-only policy,
 no fallback after connection/authentication failures, Ed25519/RSA-SHA2 client
 authentication and concurrent collections. A framing fuzz target is included.
 No real device, Core, CA or DNS was accessed in this item. Private read-only
-acceptance L-001 remains planned.
+CLI-only acceptance L-001 is documented separately in
+[the local lab guide](local-readonly-lab.md); it does not verify live NETCONF.
 
 References:
 

@@ -37,8 +37,10 @@ one backlog item at a time; `main` retains its required PR checks.
 
 A [manual Windows read-only lab tool](docs/local-readonly-lab.md) is available
 under `cmd/iosxe-lab`. It uses a local password dialog and private evidence
-outside Git checkouts. Its availability does not establish live acceptance;
-missing permissions/models and unverified account restrictions remain visible.
+outside Git checkouts. Private CLI-only acceptance is recorded under
+`L001-20261023-run04`; an approved account may have write privileges while the
+tool performs only fixed reads. NTP is deferred to the next live test. NETCONF
+models and ILM Core integration still require their own live evidence.
 
 ## Local checks
 

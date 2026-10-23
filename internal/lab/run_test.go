@@ -2,11 +2,14 @@ package lab
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,6 +141,12 @@ func TestRecordedAcceptancePreservesEvidence(t *testing.T) {
 		"tls-der":          func(r *Report) { r.TLSAfter.Certificates = nil },
 		"clock":            func(r *Report) { delete(r.Readiness.Raw, device.ReadClock) },
 		"selected-netconf": func(r *Report) { r.Scope = NETCONFAndCLI },
+		"wire-write": func(r *Report) {
+			r.WireReads = []ReadObservation{{Operation: device.Import, Complete: true, Accepted: true}}
+		},
+		"wire-incomplete": func(r *Report) {
+			r.WireReads = []ReadObservation{{Operation: device.ReadPKI, Complete: false, Accepted: true}}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var changed Report
@@ -162,6 +171,45 @@ func TestRecordedAcceptancePreservesEvidence(t *testing.T) {
 	}
 	if _, err := AssessFile(filepath.Join(checkout, "report.json"), CLIOnly); err == nil {
 		t.Fatal("private assessment entered Git")
+	}
+}
+
+func TestNETCONFSelectedModelsRequireMatchingReads(t *testing.T) {
+	address, der, _ := tlsFixture(t)
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := md5.Sum(der) // IOS XE's operational correlation field, not TLS trust.
+	nc := "urn:ietf:params:xml:ns:netconf:base:1.0"
+	reply := func(body string) []byte {
+		return []byte(`<rpc-reply xmlns="` + nc + `" message-id="1"><data>` + body + `</data></rpc-reply>`)
+	}
+	e := device.Evidence{Complete: true, Raw: map[device.Operation][]byte{
+		device.ReadPKI:     reply(fmt.Sprintf(`<crypto-pki-oper-data xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-crypto-pki-oper"><crypto-pki-bundle><label>HTTPS-ACTIVE</label><tp-keys-generated>true</tp-keys-generated><cert><serial-number>%s</serial-number><md5-fp>%X</md5-fp><is-ca-cert>false</is-ca-cert><asc-tp><tp-name>HTTPS-ACTIVE</tp-name></asc-tp></cert></crypto-pki-bundle></crypto-pki-oper-data>`, cert.SerialNumber.Text(16), hash)),
+		device.ReadBinding: reply(`<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"><ip><http xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-http"><secure-trustpoint>HTTPS-ACTIVE</secure-trustpoint></http></ip></native>`),
+	}, Capabilities: map[device.Operation]device.Capability{}}
+	hello := `<hello xmlns="` + nc + `"><capabilities>`
+	for _, name := range []string{"Cisco-IOS-XE-native", "Cisco-IOS-XE-http", "Cisco-IOS-XE-crypto-pki-oper"} {
+		hello += `<capability>http://cisco.com/ns/yang/` + name + `?module=` + name + `&amp;revision=2026-01-01</capability>`
+	}
+	e.NETCONFHello = []byte(hello + `</capabilities><session-id>1</session-id></hello>`)
+	for op := range e.Raw {
+		e.Capabilities[op] = device.Capability{Available: true, Transport: "netconf"}
+		e.Audit = append(e.Audit, device.Event{Transport: "netconf", Operation: op, Outcome: "success"})
+	}
+	r := Run(context.Background(), &fakeCollector{der: der}, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test", NETCONF: func(context.Context) (device.Evidence, error) { return e, nil }})
+	if r.Status != "PASS" || !r.Checks["models"] {
+		t.Fatal("matching selected NETCONF evidence did not pass", r.Checks)
+	}
+	r.NETCONF.NETCONFHello = nil
+	if Assess(r, NETCONFAndCLI).Status == "PASS" {
+		t.Fatal("missing advertised revisions passed")
+	}
+	r.NETCONF.NETCONFHello = e.NETCONFHello
+	r.NETCONF.Raw[device.ReadBinding] = reply(`<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"><ip><http xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-http"><secure-trustpoint>OTHER</secure-trustpoint></http></ip></native>`)
+	if Assess(r, NETCONFAndCLI).Status == "PASS" {
+		t.Fatal("contradictory NETCONF binding passed")
 	}
 }
 func TestPrivateEvidenceNeverOverwritesOrEntersCheckout(t *testing.T) {
