@@ -4,6 +4,11 @@ Start with the acceptance case in `tests/catalog.json`. For a behavior change,
 write a failing test before the implementation, then include the test result
 and the case ID in the pull request. A test-only provider is not the connector.
 
+Reuse `develop` for one backlog item at a time. Keep failed acceptance tests
+in an earlier commit and their implementation in the following commit(s).
+Submit the finished item through the required checks on a PR to `main`;
+retain `develop` for the next item rather than creating per-item branches.
+
 Keep work small: SDK/HTTP compatibility, read-only inventory, staging, then
 activation and recovery. Do not add device mutations to the discovery phase.
 Keep unimplemented acceptance cases `planned`; do not add empty tests or skip

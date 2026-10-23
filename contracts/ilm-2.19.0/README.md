@@ -21,5 +21,9 @@ The DTO tests compare serialized SDK fields with fields extracted from these
 Java sources and use fixture-only HTTP calls. They do not validate every
 attribute subtype, authorization policy, schema constraint or real Core call.
 
+`CertificateType.java` also pins the enum's `@JsonValue`: `X.509` is the
+JSON value, despite `X509` appearing as a DTO annotation's default. The
+connector boundary integration test checks the real SDK using `X.509`.
+
 Licensing: MIT, upstream copy in `LICENSE.upstream`; attribution in the
 repository `NOTICE`.

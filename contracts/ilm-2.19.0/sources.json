@@ -68,6 +68,12 @@
       "upstreamPath": "src/main/java/com/otilm/api/model/client/attribute/RequestAttribute.java",
       "sha256": "3fbecccf8ba9c9fc12088eba440ccc943b683eda7cb3e541cc4a4fd1c6aa1b5e",
       "gitBlob": "30f99cca42027a354fe0224187a4d7819b20ec28"
+    },
+    {
+      "path": "java/CertificateType.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/core/certificate/CertificateType.java",
+      "sha256": "4819a94ca80c4772bc33bc9638938a9152e71cdfc3a0eee94d8666baba64d606",
+      "gitBlob": "db839a0e8a9b3ea1b0413c83c13230a8880ef65b"
     }
   ]
 }

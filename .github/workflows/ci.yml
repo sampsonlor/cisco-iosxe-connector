@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 
@@ -54,9 +54,9 @@ jobs:
           go mod tidy -diff
       - name: Check formatting and vet
         run: |
-          test -z "$(gofmt -l tests/contract)"
+          test -z "$(gofmt -l .)"
           go vet ./...
-      - name: Run offline harness with race detector
+      - name: Run offline tests with race detector
         run: |
           mkdir -p artifacts
           go test -race -count=1 -timeout=2m -json ./... > artifacts/go-tests.json

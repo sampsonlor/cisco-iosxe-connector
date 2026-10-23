@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -73,7 +75,7 @@ func pushBody() string {
 func sdkHarness(t *testing.T) (http.Handler, *backend) {
 	t.Helper()
 	p := &backend{}
-	h, err := entity.NewHandler(p, entity.Base(handlerbase.WithStrictDecode(true)), entity.WithKinds("iosxe"))
+	h, err := entity.NewHandler(p, entity.Base(handlerbase.WithStrictDecode(true)), entity.WithKinds("iosxe"), entity.WithLocationAttributes(p))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,6 +229,41 @@ func TestBoundaryIsolation(t *testing.T) {
 	}
 }
 
+func TestBoundaryPushPolicy(t *testing.T) {
+	// The DTO annotation's default X509 is not the JSON value. Pin the enum's
+	// @JsonValue evidence independently of the SDK constant used by production.
+	source, err := os.ReadFile(filepath.Join("..", "..", "contracts", "ilm-2.19.0", "java", "CertificateType.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(source), `String X509 = "X.509"`) || !strings.Contains(string(source), "@JsonValue") {
+		t.Fatal("review pinned certificate type wire semantics")
+	}
+	valid := pushBody()
+	for _, body := range []string{
+		strings.TrimSuffix(valid, "}") + `,"unapprovedField":"synthetic"}`,
+		strings.TrimSuffix(valid, "}") + `,"chain":[]}`,
+		strings.TrimSuffix(valid, "}") + `,"certificateType":"PKCS12"}`,
+		strings.TrimSuffix(valid, "}") + `,"certificateType":"X509"}`,
+		strings.TrimSuffix(valid, "}") + `,"certificateType":null}`,
+		strings.Replace(valid, `"certificate":"c3ludGhldGlj"`, `"certificate":null`, 1),
+		strings.Replace(valid, `"certificate":"c3ludGhldGlj"`, `"certificate":"invalid base64"`, 1),
+		strings.Replace(valid, `"certificate":"c3ludGhldGlj"`, `"certificate":"c3ludGhl\ndGlj"`, 1),
+		strings.Replace(valid, pushAttrs(), "[]", 1),
+	} {
+		h, p := harness(t, policy())
+		w := request(h, "POST", base+"/locations/push", body)
+		if w.Code != 422 || p.calls.Load() != 0 {
+			t.Errorf("invalid push reached backend: %d calls=%d %s", w.Code, p.calls.Load(), w.Body)
+		}
+	}
+	h, p := harness(t, policy())
+	w := request(h, "POST", base+"/locations/push", strings.TrimSuffix(valid, "}")+`,"certificateType":"X.509"}`)
+	if w.Code != 200 || p.calls.Load() != 1 {
+		t.Fatalf("X.509 wire value rejected: %d %s", w.Code, w.Body)
+	}
+}
+
 func TestBoundaryJSON(t *testing.T) {
 	valid := csrBody("HTTPS-STAGE-A")
 	for _, body := range []string{
@@ -315,6 +352,22 @@ func TestBoundaryPolicy(t *testing.T) {
 			p.StagingTrustpoints = []string{"unsafe\nreload"}
 			c.Devices["router-a"] = p
 		},
+		func(c *provider.Config) {
+			p := c.Devices["router-a"]
+			p.Target = netip.MustParseAddr("fe80::1%eth0")
+			c.Devices["router-a"] = p
+		},
+		func(c *provider.Config) {
+			p := c.Devices["router-a"]
+			p.Target = netip.MustParseAddr("::ffff:192.0.2.10")
+			c.Devices["router-a"] = p
+		},
+		func(c *provider.Config) {
+			p := c.Devices["router-a"]
+			p.StagingTrustpoints = []string{"HTTPS-STAGE-A", "https-stage-a"}
+			c.Devices["router-a"] = p
+		},
+		func(c *provider.Config) { c.Devices["unsafe;id"] = c.Devices["router-a"] },
 	} {
 		cfg := policy()
 		mutate(&cfg)
@@ -346,6 +399,56 @@ func TestBoundaryPolicy(t *testing.T) {
 	w = request(h, "GET", base, "")
 	if w.Code != 404 || p.calls.Load() != 0 {
 		t.Fatalf("unapproved binding accepted: %d", w.Code)
+	}
+}
+
+func TestBoundaryIPv6AndContext(t *testing.T) {
+	cfg := policy()
+	dev := cfg.Devices["router-a"]
+	dev.Target = netip.MustParseAddr("2001:db8::10")
+	cfg.Devices["router-a"] = dev
+	h, p := harness(t, cfg)
+	w := request(h, "POST", "/v1/entityProvider/entities", entityBody("router-a", "2001:db8::10"))
+	if w.Code != 200 || p.calls.Load() != 1 {
+		t.Fatalf("approved IPv6 rejected: %d %s", w.Code, w.Body)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cfg.ResolveEntity = func(ctx context.Context, _ string) (string, error) { return "", ctx.Err() }
+	h, p = harness(t, cfg)
+	r := httptest.NewRequest("GET", base, nil).WithContext(ctx)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 500 || p.calls.Load() != 0 {
+		t.Fatalf("cancelled resolver was ignored: %d", w.Code)
+	}
+}
+
+func TestBoundaryBackendErrors(t *testing.T) {
+	for _, status := range []int{400, 403, 404, 422, 500} {
+		h, p := harness(t, policy())
+		p.failure = &shared.Error{Status: status, ErrorCode: "SYNTHETIC", Detail: "synthetic backend failure"}
+		w := request(h, "GET", base, "")
+		if w.Code != status {
+			t.Fatalf("backend status changed: %d", w.Code)
+		}
+		if status == 422 {
+			var messages []string
+			if json.Unmarshal(w.Body.Bytes(), &messages) != nil || len(messages) != 1 {
+				t.Fatalf("bad v1 validation error: %s", w.Body)
+			}
+		} else {
+			var envelope map[string]any
+			if json.Unmarshal(w.Body.Bytes(), &envelope) != nil || envelope["message"] != "synthetic backend failure" {
+				t.Fatalf("bad v1 error: %s", w.Body)
+			}
+			if status == 403 && (envelope["code"] != "SYNTHETIC" || envelope["statusCode"] != float64(403)) {
+				t.Fatalf("bad v1 authentication error: %s", w.Body)
+			}
+			if status != 403 && len(envelope) != 1 {
+				t.Fatalf("unexpected v2 error fields: %s", w.Body)
+			}
+		}
 	}
 }
 
@@ -407,6 +510,7 @@ func TestBoundaryConcurrent(t *testing.T) {
 type backend struct {
 	calls   atomic.Int32
 	invalid atomic.Bool
+	failure error
 }
 
 var _ entity.Provider = (*backend)(nil)
@@ -422,6 +526,10 @@ func (p *backend) CreateEntityInstance(context.Context, *mdl.EntityInstanceReque
 	return p.dto(), nil
 }
 func (p *backend) GetEntityInstance(context.Context, string) (*mdl.EntityInstanceDto, error) {
+	if p.failure != nil {
+		p.calls.Add(1)
+		return nil, p.failure
+	}
 	return p.dto(), nil
 }
 func (p *backend) UpdateEntityInstance(context.Context, string, *mdl.EntityInstanceRequestDto) (*mdl.EntityInstanceDto, error) {
