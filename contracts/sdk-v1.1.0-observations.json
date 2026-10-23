@@ -1,0 +1,11 @@
+{
+  "sdkVersion": "v1.1.0",
+  "sdkCommit": "1a6c93aae95e32da738c5f830459a9f344ab0394",
+  "generatedAPIVersion": "2.20.0-SNAPSHOT",
+  "differences": [
+    {"id":"K-001","method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/location/attributes/validate","targetStatus":204,"sdkStatus":200},
+    {"id":"K-001","method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/push/attributes/validate","targetStatus":204,"sdkStatus":200},
+    {"id":"K-001","method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/csr/attributes/validate","targetStatus":204,"sdkStatus":200}
+  ],
+  "strictCompatibilityAccepted": false
+}

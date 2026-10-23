@@ -1,0 +1,23 @@
+# Local build and test outputs
+/bin/
+/dist/
+/artifacts/
+/coverage.out
+*.test
+__pycache__/
+*.pyc
+
+# Private environment configuration and lab evidence
+.env
+.env.*
+!.env.example
+/local/
+/lab-results/
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log

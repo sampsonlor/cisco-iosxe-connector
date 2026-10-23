@@ -1,0 +1,22 @@
+{
+  "scope": "Reviewed Entity Provider and v1 common subset, not a complete OpenAPI document",
+  "routes": [
+    {"method":"GET","path":"/v1","source":"InfoController.java","status":200},
+    {"method":"GET","path":"/v1/health","source":"HealthController.java","status":200},
+    {"method":"GET","path":"/v1/entityProvider/entities","source":"EntityController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities","source":"EntityController.java","status":200},
+    {"method":"GET","path":"/v1/entityProvider/entities/{entityUuid}","source":"EntityController.java","status":200},
+    {"method":"PUT","path":"/v1/entityProvider/entities/{entityUuid}","source":"EntityController.java","status":200},
+    {"method":"DELETE","path":"/v1/entityProvider/entities/{entityUuid}","source":"EntityController.java","status":204},
+    {"method":"GET","path":"/v1/entityProvider/entities/{entityUuid}/location/attributes","source":"EntityController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/location/attributes/validate","source":"EntityController.java","status":204},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations","source":"LocationController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/push","source":"LocationController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/remove","source":"LocationController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/csr","source":"LocationController.java","status":200},
+    {"method":"GET","path":"/v1/entityProvider/entities/{entityUuid}/locations/push/attributes","source":"LocationController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/push/attributes/validate","source":"LocationController.java","status":204},
+    {"method":"GET","path":"/v1/entityProvider/entities/{entityUuid}/locations/csr/attributes","source":"LocationController.java","status":200},
+    {"method":"POST","path":"/v1/entityProvider/entities/{entityUuid}/locations/csr/attributes/validate","source":"LocationController.java","status":204}
+  ]
+}

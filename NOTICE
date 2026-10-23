@@ -1,0 +1,13 @@
+Cisco IOS XE Connector for OmniTrust ILM
+Copyright 2026 Sampson and contributors
+
+This community project is not affiliated with Cisco or OmniTrust.
+
+contracts/ilm-2.19.0/java contains unmodified excerpts from
+https://github.com/OmniTrustILM/interfaces at commit
+e62233777518296f70a151cf766dde5e1a6cea2d (release 2.19.0).
+Those files are licensed under the MIT License by their upstream authors.
+The upstream license is included as contracts/ilm-2.19.0/LICENSE.upstream.
+
+The Go contract harness consumes github.com/OmniTrustILM/go-sdk v1.1.0,
+licensed under Apache License 2.0 by Identity Lifecycle Management (ILM).

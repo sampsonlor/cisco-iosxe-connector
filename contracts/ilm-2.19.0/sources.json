@@ -1,0 +1,73 @@
+{
+  "repository": "OmniTrustILM/interfaces",
+  "ref": "2.19.0",
+  "commit": "e62233777518296f70a151cf766dde5e1a6cea2d",
+  "files": [
+    {
+      "path": "java/EntityController.java",
+      "upstreamPath": "src/main/java/com/otilm/api/interfaces/connector/entity/EntityController.java",
+      "sha256": "844f79f02a67b06ef53b27d32e28c494a855a4b9c5a8a76e89e535ec98eaf1c5",
+      "gitBlob": "cb306c0a865aae85b2e33a51deeb003581640e54"
+    },
+    {
+      "path": "java/LocationController.java",
+      "upstreamPath": "src/main/java/com/otilm/api/interfaces/connector/entity/LocationController.java",
+      "sha256": "15f1aa413bc9d61fca6262d67a6315aa1ed04edb9d71144f10512f55054e6908",
+      "gitBlob": "d7fc20b7798b4004170c36bb3c4d6b23f518e8ab"
+    },
+    {
+      "path": "java/InfoController.java",
+      "upstreamPath": "src/main/java/com/otilm/api/interfaces/connector/InfoController.java",
+      "sha256": "30933550dd0f365303f123b044fa40a46a7d87ba803e3b918fd16155642fed56",
+      "gitBlob": "328600dd4c57d6f79a106caa1b8d7511357593c4"
+    },
+    {
+      "path": "java/HealthController.java",
+      "upstreamPath": "src/main/java/com/otilm/api/interfaces/connector/HealthController.java",
+      "sha256": "ef16869865a4f8a950309442699c099da266699e72ef09f7bc841267016757ac",
+      "gitBlob": "f9de1d1891a253e988ff63281fa27a9a5420e5d9"
+    },
+    {
+      "path": "java/GenerateCsrRequestDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/GenerateCsrRequestDto.java",
+      "sha256": "e574b924731c875df40a0e63f23e182186acf8f0124eefba4790664c96f92d9f",
+      "gitBlob": "3aecccc38cf599c67818ec14cc7a22d103daf388"
+    },
+    {
+      "path": "java/GenerateCsrResponseDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/GenerateCsrResponseDto.java",
+      "sha256": "a4b867934f5fe9710cf885840099621f64307fde953b8df67b668d2d5dda0f84",
+      "gitBlob": "846fc9007acb4bd8b3cbea579c0080a5aece1da1"
+    },
+    {
+      "path": "java/PushCertificateRequestDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/PushCertificateRequestDto.java",
+      "sha256": "fa72fb52b4cbcd03269c7846a1867df0697a6022bbdf6b84ef046f67b61062cf",
+      "gitBlob": "ea97a002d0ee85c14a6a574acc2ee0a68efbcb67"
+    },
+    {
+      "path": "java/PushCertificateResponseDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/PushCertificateResponseDto.java",
+      "sha256": "0fc4b4271e21fdea03e1a6cf280acb356bb45a9d6cdb7ab9fe0498d1ba619e3c",
+      "gitBlob": "b5b603f987bb6befaa3c8119ac5d50b0a07ef093"
+    },
+    {
+      "path": "java/LocationDetailResponseDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/LocationDetailResponseDto.java",
+      "sha256": "5f2f0fac658717de0e7b0a28e5a48916bd7c4e38f16e6a6d0ad8e816259e8b6d",
+      "gitBlob": "a61c8b7f56a9208cd5e8c5d7ca23b18d81875ad6"
+    },
+    {
+      "path": "java/CertificateLocationDto.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/connector/entity/CertificateLocationDto.java",
+      "sha256": "a2ddb9f9e3c898bb63a3c54610eceee6eab422a55394519dac9bf75d4ea0b5d7",
+      "gitBlob": "0b3f52421d4cc8b6344075c43b0982b5f0a1bc76"
+    },
+    {
+      "path": "java/RequestAttribute.java",
+      "upstreamPath": "src/main/java/com/otilm/api/model/client/attribute/RequestAttribute.java",
+      "sha256": "3fbecccf8ba9c9fc12088eba440ccc943b683eda7cb3e541cc4a4fd1c6aa1b5e",
+      "gitBlob": "30f99cca42027a354fe0224187a4d7819b20ec28"
+    }
+  ]
+}
