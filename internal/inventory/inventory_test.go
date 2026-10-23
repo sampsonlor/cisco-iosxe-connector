@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -32,7 +33,7 @@ type fixture struct {
 	roles []inventory.Assignment
 }
 
-func certificate(t *testing.T, serial int64, ca bool) []byte {
+func certificate(t testing.TB, serial int64, ca bool) []byte {
 	t.Helper()
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -52,7 +53,7 @@ func fingerprint(der []byte) string { h := sha256.Sum256(der); return hex.Encode
 func reply(s string) []byte {
 	return []byte(`<rpc-reply xmlns="` + nc + `" message-id="1"><data>` + s + `</data></rpc-reply>`)
 }
-func synthetic(t *testing.T, netconf bool) fixture {
+func synthetic(t testing.TB, netconf bool) fixture {
 	t.Helper()
 	f := fixture{der: map[string][]byte{}, e: device.Evidence{Complete: true, Raw: map[device.Operation][]byte{}, Capabilities: map[device.Operation]device.Capability{}}}
 	var pemText, labels, bundles strings.Builder
@@ -94,6 +95,19 @@ func TestPEMTrustpointInventory(t *testing.T) {
 	for _, netconf := range []bool{false, true} {
 		t.Run(fmt.Sprint(netconf), func(t *testing.T) {
 			f := synthetic(t, netconf)
+			// Device releases can wrap PEM at different widths and indent lines.
+			for _, der := range f.der {
+				encoded := base64.StdEncoding.EncodeToString(der)
+				var wrapped strings.Builder
+				wrapped.WriteString("  -----BEGIN CERTIFICATE-----  \n")
+				for len(encoded) > 0 {
+					n := min(37, len(encoded))
+					wrapped.WriteString("  " + encoded[:n] + "  \n")
+					encoded = encoded[n:]
+				}
+				wrapped.WriteString("  -----END CERTIFICATE-----  \n")
+				f.e.Raw[device.ReadCertificates] = bytes.Replace(f.e.Raw[device.ReadCertificates], pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), []byte(wrapped.String()), 1)
+			}
 			// CRLF, whitespace and prompt/command echoes must preserve attribution.
 			f.e.Raw[device.ReadCertificates] = []byte("router-test#show crypto pki certificates pem\r\n" + strings.ReplaceAll(string(f.e.Raw[device.ReadCertificates]), "\n", "\r\n") + "router-test#\r\n")
 			s, err := inventory.Parse(f.e, f.roles)

@@ -6,9 +6,9 @@ RPC, write or recovery-account API. SQLite continues to store Entity metadata
 as implemented in #3. This item does not change that store or add a device
 operation journal; durable write intents/locks remain a later milestone.
 
-The collector is not yet the Provider's `InventoryReader`. #5 will parse these
-reads, establish certificate/Trustpoint/active-binding relationships and wire
-that reader into the Provider. `Evidence.Complete` means all required **wire
+The collector feeds #5's [inventory adapter](certificate-inventory.md), which
+establishes certificate/Trustpoint/active-binding relationships and implements
+the Provider's reader. `Evidence.Complete` means all required **wire
 reads** finished; it is not proof of valid inventory, supported firmware,
 correct time, a matching private key or successful certificate deployment.
 
@@ -89,7 +89,8 @@ it never fabricates full inventory support.
 
 Commands fail on authorization denial, nonzero/missing exit status, empty
 output, paging or unexpected IOS `%` errors. Known PEM certificate header
-markers are admitted as data. Unknown formats still require #5's semantic
+markers and the documented unenrolled/CA-only informational notices are admitted
+as data; a CA-export failure remains an error. Unknown formats require #5's semantic
 parser to reject them; a successful exec alone cannot establish certificate
 roles or active binding. The adapter does not work around rejected exec
 channels by enabling protocols, adding privileges or opening a shell.

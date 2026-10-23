@@ -20,8 +20,8 @@ handler, err := provider.NewReadOnlyHandler(store, cfg, inventoryReader)
 `InventoryReader` is a narrow dependency with only `ReadHTTPS(ctx, DeviceAccess)`.
 It receives the operator-approved literal target, credential reference and
 host identity reference. [NETCONF/SSH transport libraries](readonly-transports.md)
-are implemented in #4; inventory parsing, Provider wiring and activity/Trustpoint
-roles follow in #5. Nil reader means unavailable,
+are implemented in #4; [inventory parsing and the reader adapter](certificate-inventory.md)
+are implemented in #5. Nil reader means unavailable,
 not an empty inventory. The host owns the store and reader lifetimes.
 
 Example configuration (all values are synthetic):

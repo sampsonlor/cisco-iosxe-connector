@@ -5,12 +5,15 @@ import (
 	"context"
 	"errors"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"golang.org/x/crypto/ssh"
 )
+
+var unenrolledNotice = regexp.MustCompile(`^% the specified trustpoint is not enrolled \([a-z0-9][a-z0-9_.-]{0,63}\)\.$`)
 
 func (c *Client) connect(ctx context.Context, t Target, ep Endpoint) (*ssh.Client, func(), error) {
 	key, err := c.resolver.HostKey(ctx, ep.HostKeyRef)
@@ -143,7 +146,7 @@ func classifyCLI(raw []byte, runErr error, overflow bool) error {
 		if strings.HasPrefix(line, "% invalid input") || strings.HasPrefix(line, "% unrecognized command") {
 			return ErrUnsupported
 		}
-		if strings.HasPrefix(line, "%") && !strings.HasPrefix(line, "% general purpose certificate:") && !strings.HasPrefix(line, "% ca certificate:") {
+		if strings.HasPrefix(line, "%") && line != "% general purpose certificate:" && line != "% ca certificate:" && line != "% only export the ca certificate in pem format." && !unenrolledNotice.MatchString(line) {
 			return ErrRead
 		}
 	}

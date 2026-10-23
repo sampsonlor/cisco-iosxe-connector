@@ -131,6 +131,27 @@ func validEndpoint(e Endpoint) bool {
 	return e.Port != 0 && reference.MatchString(e.CredentialRef) && reference.MatchString(e.HostKeyRef)
 }
 
+// ApprovedTarget binds a Provider read to this immutable operator registry.
+// HostKeyRef identifies the primary daemon (NETCONF when enabled, otherwise
+// CLI). A separate CLI daemon pin is also fixed by NewClient's registry.
+func (c *Client) ApprovedTarget(id string, address netip.Addr, credentialRef, hostKeyRef string) bool {
+	if c == nil {
+		return false
+	}
+	t, ok := c.targets[id]
+	if !ok || t.Address != address {
+		return false
+	}
+	ep := t.NETCONF
+	if ep.Port == 0 {
+		if t.CLI == nil {
+			return false
+		}
+		ep = *t.CLI
+	}
+	return ep.CredentialRef == credentialRef && ep.HostKeyRef == hostKeyRef
+}
+
 func (c *Client) Collect(ctx context.Context, id string) (e Evidence, err error) {
 	t, ok := c.targets[id]
 	if !ok {
