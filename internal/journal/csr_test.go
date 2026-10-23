@@ -173,3 +173,31 @@ func TestCSRSchemaMigrationPreservesLegacyOperations(t *testing.T) {
 		t.Fatal("invalid policy reached generator")
 	}
 }
+
+func TestCSRSchemaMissingArtifactsFailsStartup(t *testing.T) {
+	s, path := openTest(t)
+	if _, err := s.db.Exec("DROP TABLE csr_operations"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	if reopened, err := Open(path, []Service{approved()}); err == nil {
+		_ = reopened.Close()
+		t.Fatal("schema v2 with missing CSR table accepted")
+	}
+}
+
+func TestCSRCallbackCannotChangePersistedSpecification(t *testing.T) {
+	s, _ := openTest(t)
+	r := begin(t, s)
+	result := csrResult(t)
+	if _, _, err := s.GenerateCSR(context.Background(), r.Ref(), csrSpec(), func(_ context.Context, q csr.Request) (csr.Result, error) {
+		q.Spec.DNSNames[0] = "injected.example.test"
+		return result, nil
+	}); err != nil {
+		t.Fatal("callback mutated trusted canonical specification", err)
+	}
+	q, err := s.CSRRequest(context.Background(), r.Ref())
+	if err != nil || q.Spec.DNSNames[0] != "router.example.test" {
+		t.Fatal("stored specification changed", err)
+	}
+}

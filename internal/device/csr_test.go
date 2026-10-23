@@ -2,20 +2,18 @@ package device
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,6 +29,16 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 		t.Fatal(err)
 	}
 	pub, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	oldKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldPub, _ := x509.MarshalPKIXPublicKey(&oldKey.PublicKey)
+	if mode == "reused-key" {
+		oldPub = pub
+	}
+	var configMu sync.Mutex
+	var stageLines []string
 	spec := csr.Spec{CommonName: "router.example.test", DNSNames: []string{"router.example.test"}, RSABits: 2048}
 	names := spec.DNSNames
 	if mode == "wrong-san" {
@@ -44,7 +52,11 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 	count := &atomic.Int32{}
 	q := csr.Request{OperationID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", DeviceID: "router-a", Target: "192.0.2.10", PolicySHA256: strings.Repeat("a", 64), ActiveTrustpoint: "HTTPS-LIVE", BaselineSHA256: strings.Repeat("b", 64), Trustpoint: "HTTPS-STAGE-A", Spec: spec}
 	keyText := func(name string) string {
-		return "% Key pair was generated at: 12:00:00 UTC Oct 23 2026\nKey name: " + name + "\nKey type: RSA KEYS 2048 bits\n Usage: General Purpose Key\n Key is not exportable.\n Key Data:\n  " + strings.ToUpper(hex.EncodeToString(pub)) + "\n"
+		der := pub
+		if name == "LIVE-KEY" || name == "OLD-KEY" {
+			der = oldPub
+		}
+		return "% Key pair was generated at: 12:00:00 UTC Oct 23 2026\nKey name: " + name + "\nKey type: RSA KEYS 2048 bits\n Usage: General Purpose Key\n Key is not exportable.\n Key Data:\n  " + strings.ToUpper(hex.EncodeToString(der)) + "\n"
 	}
 	f := &fixture{}
 	f.commandOutput = func(command string) string {
@@ -62,7 +74,9 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 		case "show running-config | section ^crypto pki trustpoint":
 			out := "crypto pki trustpoint HTTPS-LIVE\n rsakeypair LIVE-KEY\n!\ncrypto pki trustpoint HTTPS-OLD\n rsakeypair OLD-KEY\n!\n"
 			if mode == "occupied-tp" || configured.Load() {
-				out += "crypto pki trustpoint HTTPS-STAGE-A\n rsakeypair " + q.KeyLabel() + "\n!\n"
+				configMu.Lock()
+				out += "crypto pki trustpoint HTTPS-STAGE-A\n " + strings.Join(stageLines, "\n ") + "\n!\n"
+				configMu.Unlock()
 			}
 			return out
 		case "show crypto key mypubkey rsa":
@@ -95,6 +109,8 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 			command := strings.TrimSpace(line)
 			f.record("cli:" + command)
 			switch {
+			case strings.HasPrefix(command, "show "):
+				_, _ = io.WriteString(ch, f.commandOutput(command))
 			case command == "configure terminal":
 				prompt = "Router(config)#"
 			case command == "end":
@@ -103,6 +119,11 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 				prompt = "Router(config)#"
 			case strings.HasPrefix(command, "crypto key generate rsa "):
 				count.Add(1)
+				if mode == "stderr" {
+					_, _ = io.WriteString(ch.Stderr(), "private device diagnostic")
+					_, _ = io.Copy(io.Discard, ch)
+					return
+				}
 				if mode == "replace" {
 					_, _ = io.WriteString(ch, "Do you really want to replace them? [yes/no]: ")
 					_, _ = io.Copy(io.Discard, ch)
@@ -145,6 +166,12 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 				if strings.TrimSpace(answer) != "no" {
 					return
 				}
+			default:
+				if prompt == "Router(ca-trustpoint)#" {
+					configMu.Lock()
+					stageLines = append(stageLines, command)
+					configMu.Unlock()
+				}
 			}
 			_, _ = io.WriteString(ch, prompt)
 		}
@@ -152,7 +179,7 @@ func csrWire(t *testing.T, mode string) (*fixture, *CSRAdapter, csr.Request, *at
 	f = startFixture(t, f)
 	client := testClient(t, f, false, true)
 	if mode == "key-timeout" {
-		client.timeout = 100 * time.Millisecond
+		client.timeout = 2 * time.Second
 	}
 	q.HostKeySHA256 = ssh.FingerprintSHA256(f.signer.PublicKey())
 	policy := CSRPolicy{AllowWrites: true, Version: "26.01.02", PolicySHA256: q.PolicySHA256, Spec: spec, StagingTrustpoints: []string{"HTTPS-STAGE-A"}, ProtectedNames: []string{"HTTPS-LIVE", "HTTPS-OLD", "LIVE-KEY", "OLD-KEY"}}
@@ -172,7 +199,7 @@ func TestCSRFixedCLIAndNonExportableProof(t *testing.T) {
 	f, a, q, count := csrWire(t, "")
 	result, err := a.Generate(context.Background(), q)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal(err, f.logs())
 	}
 	if count.Load() != 1 || csr.Validate(result, q.Spec) != nil {
 		t.Fatal("CSR/public key/non-exportability not verified")
@@ -191,8 +218,6 @@ func TestCSRFixedCLIAndNonExportableProof(t *testing.T) {
 	if !slices.Contains(logs, "answer:yes") || !slices.Contains(logs, "answer:no") {
 		t.Fatal("expected bounded enrollment dialogue missing")
 	}
-	_ = sha256.Sum256(result.DER)
-	_ = bytes.Equal
 }
 func TestCSRRejectsOccupiedAndUnverifiedTargets(t *testing.T) {
 	for _, mode := range []string{"occupied-tp", "occupied-key", "wrong-version", "ntp-disabled"} {
@@ -205,7 +230,7 @@ func TestCSRRejectsOccupiedAndUnverifiedTargets(t *testing.T) {
 	}
 }
 func TestCSRStopsUnexpectedPromptsAndUnknownWrites(t *testing.T) {
-	for _, mode := range []string{"replace", "key-timeout", "denied", "unknown-prompt", "wrong-san", "exportable"} {
+	for _, mode := range []string{"replace", "key-timeout", "denied", "unknown-prompt", "wrong-san", "exportable", "reused-key", "stderr"} {
 		t.Run(mode, func(t *testing.T) {
 			f, a, q, count := csrWire(t, mode)
 			result, err := a.Generate(context.Background(), q)
@@ -221,6 +246,23 @@ func TestCSRStopsUnexpectedPromptsAndUnknownWrites(t *testing.T) {
 		})
 	}
 }
+
+func TestCSRAdapterRequiresExplicitWritePolicy(t *testing.T) {
+	f, a, q, _ := csrWire(t, "")
+	p := a.policies[q.DeviceID]
+	p.AllowWrites = false
+	if _, err := NewCSRAdapter(a.client, map[string]CSRPolicy{q.DeviceID: p}, a.verify); err == nil {
+		t.Fatal("default-disabled writes enabled")
+	}
+	p.AllowWrites = true
+	p.Spec.RSABits = 1024
+	if _, err := NewCSRAdapter(a.client, map[string]CSRPolicy{q.DeviceID: p}, a.verify); err == nil {
+		t.Fatal("weak key policy accepted")
+	}
+	if f.auth.Load() != 0 {
+		t.Fatal("invalid write policy authenticated")
+	}
+}
 func TestCSRIdentityAndInjectionFailBeforeAuth(t *testing.T) {
 	f, a, q, count := csrWire(t, "")
 	for _, change := range []func(*csr.Request){func(q *csr.Request) { q.HostKeySHA256 = "SHA256:wrong" }, func(q *csr.Request) { q.Trustpoint = "HTTPS-OLD" }, func(q *csr.Request) { q.Spec.CommonName = "bad\nend" }, func(q *csr.Request) { q.Target = "192.0.2.11" }} {
@@ -233,5 +275,4 @@ func TestCSRIdentityAndInjectionFailBeforeAuth(t *testing.T) {
 	if f.auth.Load() != 0 {
 		t.Fatal("policy/identity failure authenticated")
 	}
-	_ = fmt.Sprint
 }
