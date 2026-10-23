@@ -1,12 +1,38 @@
 package provider
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestEntityStoreDurabilityAndSchema(t *testing.T) {
+	foreignPath := filepath.Join(t.TempDir(), "foreign.sqlite")
+	foreign, err := sql.Open("sqlite", foreignPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := foreign.Exec("CREATE TABLE other_application (value TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := foreign.Close(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(foreignPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted, err := OpenEntityStore(foreignPath); err == nil {
+		_ = accepted.Close()
+		t.Fatal("foreign database accepted")
+	}
+	after, err := os.ReadFile(foreignPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("rejected foreign database was modified")
+	}
 	path := filepath.Join(t.TempDir(), "entities.sqlite")
 	s, err := OpenEntityStore(path)
 	if err != nil {
