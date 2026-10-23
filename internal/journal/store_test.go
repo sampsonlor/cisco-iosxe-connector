@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"modernc.org/sqlite"
 )
 
 func approved() Service {
@@ -202,6 +203,11 @@ func TestJournalStorageFailuresBlockEffects(t *testing.T) {
 				if _, err := s.db.Exec(fmt.Sprintf("PRAGMA max_page_count=%d", pages)); err != nil {
 					t.Fatal(err)
 				}
+				_, probeErr := s.db.Exec("INSERT INTO disk_pressure VALUES(zeroblob(1048576))")
+				var full *sqlite.Error
+				if !errors.As(probeErr, &full) || full.Code()&255 != 13 {
+					t.Fatal("disk-pressure fixture did not produce SQLITE_FULL", probeErr)
+				}
 			case "writer-lock":
 				var err error
 				external, err = sql.Open("sqlite", path)
@@ -240,6 +246,101 @@ func TestJournalStorageFailuresBlockEffects(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestJournalRejectsDetachedHistory(t *testing.T) {
+	s, path := openTest(t)
+	r := begin(t, s)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("UPDATE operations SET revision=revision+1,state=? WHERE id=?", KeyCreating, r.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	if reopened, err := Open(path, []Service{approved()}); err == nil {
+		_ = reopened.Close()
+		t.Fatal("operation state detached from its committed history was accepted")
+	}
+}
+
+func TestJournalServiceIsolationAndPolicyCopy(t *testing.T) {
+	a := approved()
+	b := approved()
+	b.EntityID = uuid.NewString()
+	b.LocationID = uuid.NewSHA1(uuid.NameSpaceURL, []byte("iosxe:"+b.EntityID+":https")).String()
+	b.DeviceID = "router-b"
+	b.Target = "192.0.2.11"
+	s, err := Open(filepath.Join(t.TempDir(), "journal.sqlite"), []Service{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	a.StagingTrustpoints[0] = "INJECTED"
+	c := correlation()
+	c.StagingTrustpoint = "INJECTED"
+	if _, err := s.Begin(context.Background(), uuid.NewString(), c); !errors.Is(err, ErrCorrelation) {
+		t.Fatal("caller expanded copied staging policy", err)
+	}
+	r := ready(t, s)
+	entered := make(chan struct{})
+	finish := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.ImportOnce(context.Background(), r.Ref(), r.CertificateSHA256, func(context.Context, Record) error { close(entered); <-finish; return nil })
+		done <- err
+	}()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c = correlation()
+	c.Binding = b.Binding
+	if _, err := s.Begin(ctx, uuid.NewString(), c); err != nil {
+		close(finish)
+		<-done
+		t.Fatal("another service was blocked during import", err)
+	}
+	close(finish)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJournalRejectsUnsafeBindingsAndFileAliases(t *testing.T) {
+	for name, change := range map[string]func(*Service){
+		"owner": func(p *Service) { p.Owner = "both" }, "target": func(p *Service) { p.Target = "127.0.0.1" }, "host-key": func(p *Service) { p.HostKeySHA256 = "unverified" }, "policy": func(p *Service) { p.PolicySHA256 = "current" }, "location": func(p *Service) { p.LocationID = uuid.NewString() }, "stage": func(p *Service) { p.StagingTrustpoints = []string{"bad;command"} }, "duplicate-stage": func(p *Service) { p.StagingTrustpoints = []string{"STAGE", "stage"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := approved()
+			change(&p)
+			if s, err := Open(filepath.Join(t.TempDir(), "journal.sqlite"), []Service{p}); !errors.Is(err, ErrCorrelation) {
+				if s != nil {
+					_ = s.Close()
+				}
+				t.Fatal("unsafe policy accepted", err)
+			}
+		})
+	}
+	s, path := openTest(t)
+	if other, err := Open(path, []Service{approved()}); !errors.Is(err, ErrInstance) {
+		if other != nil {
+			_ = other.Close()
+		}
+		t.Fatal("second handle admitted", err)
+	}
+	_ = s.Close()
+	alias := filepath.Join(filepath.Dir(path), "alias.sqlite")
+	if err := os.Link(path, alias); err != nil {
+		t.Fatal(err)
+	}
+	if other, err := Open(alias, []Service{approved()}); err == nil {
+		_ = other.Close()
+		t.Fatal("hard-linked SQLite path admitted")
 	}
 }
 
