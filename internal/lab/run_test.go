@@ -2,6 +2,9 @@ package lab
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"os"
@@ -13,11 +16,12 @@ import (
 )
 
 type fakeCollector struct {
-	der     []byte
-	calls   int
-	denied  bool
-	drift   bool
-	netconf bool
+	der      []byte
+	calls    int
+	denied   bool
+	drift    bool
+	netconf  bool
+	unsynced bool
 }
 
 func (f *fakeCollector) Readiness(context.Context, string) (device.Evidence, error) {
@@ -28,7 +32,12 @@ func (f *fakeCollector) Readiness(context.Context, string) (device.Evidence, err
 	if f.netconf {
 		e.Raw[device.ReadProtocolConfig] = []byte("netconf-yang\n")
 	}
-	for _, op := range []device.Operation{device.ReadClock, device.ReadNTP, device.ReadPrivilege, device.ReadProtocolConfig} {
+	if f.unsynced {
+		e.Raw[device.ReadClock] = []byte("*12:00:00.000 UTC Fri Oct 23 2026\nNo time source\n")
+		e.Raw[device.ReadNTP] = []byte("%NTP is not enabled.")
+	}
+	e.Raw[device.ReadHTTPSStatus] = []byte("HTTP secure server status: Enabled\n")
+	for _, op := range []device.Operation{device.ReadClock, device.ReadNTP, device.ReadPrivilege, device.ReadProtocolConfig, device.ReadHTTPSStatus} {
 		e.Audit = append(e.Audit, device.Event{Transport: "ssh", Operation: op, Outcome: "success"})
 	}
 	return e, nil
@@ -55,8 +64,8 @@ func TestLabReportSeparatesObservedAndUnverifiedGates(t *testing.T) {
 			t.Errorf("missing observation: %s", name)
 		}
 	}
-	if r.Status != "INCOMPLETE" || r.Checks["models"] || r.Checks["restricted-identity"] {
-		t.Fatal("unverified environment gates silently passed")
+	if r.Status != "PASS" || r.Checks["models"] || r.Checks["restricted-identity"] {
+		t.Fatal("approved CLI reads were blocked by unselected models/account write restrictions")
 	}
 	src = &fakeCollector{der: der, denied: true}
 	r = Run(context.Background(), src, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test"})
@@ -67,6 +76,92 @@ func TestLabReportSeparatesObservedAndUnverifiedGates(t *testing.T) {
 	r = Run(context.Background(), src, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test"})
 	if r.Checks["stable-baseline"] || r.Status == "PASS" {
 		t.Fatal("failed second read reported stable")
+	}
+}
+
+func TestReadOnlyAcceptanceScope(t *testing.T) {
+	address, der, _ := tlsFixture(t)
+	r := Run(context.Background(), &fakeCollector{der: der, unsynced: true}, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test"})
+	if r.Status != "PASS" || r.Scope != CLIOnly || r.Checks["time-synchronized"] || r.Checks["models"] {
+		t.Fatal("CLI-only scope must permit approved privilege-15 reads and record unsynchronized time")
+	}
+	called := false
+	r = Run(context.Background(), &fakeCollector{der: der}, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test", NETCONF: func(context.Context) (device.Evidence, error) {
+		called = true
+		return device.Evidence{}, device.ErrUnsupported
+	}})
+	if !called || r.Scope != NETCONFAndCLI || r.Status != "INCOMPLETE" || r.Checks["models"] {
+		t.Fatal("selected NETCONF was skipped or passed from empty CLI filter output")
+	}
+}
+
+func TestRecordedAcceptancePreservesEvidence(t *testing.T) {
+	address, der, _ := tlsFixture(t)
+	r := Run(context.Background(), &fakeCollector{der: der, unsynced: true}, Config{DeviceID: "router-a", TLSAddress: address, Hostname: "router.example.test"})
+	// A completed legacy run used broader gates; keep that historical report.
+	r.Scope, r.Status = "", "INCOMPLETE"
+	r.Checks["restricted-identity"] = false
+	directory := t.TempDir()
+	path, err := WriteReport(directory, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, _ := os.ReadFile(path)
+	digest := sha256.Sum256(original)
+	assessmentPath, err := AssessFile(path, CLIOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(assessmentPath)
+	var a Assessment
+	if err = json.Unmarshal(data, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Status != "PASS" || a.Mode != "RECORDED_EVIDENCE_ASSESSMENT" || a.OriginalReportSHA256 != hex.EncodeToString(digest[:]) || a.Checks["time-synchronized"] || a.Checks["models"] {
+		t.Fatal("derived assessment lost its scope, original hash or unverified observations")
+	}
+	unchanged, _ := os.ReadFile(path)
+	if string(original) != string(unchanged) {
+		t.Fatal("historical report overwritten")
+	}
+	if _, err := AssessFile(path, CLIOnly); err == nil {
+		t.Fatal("assessment overwritten")
+	}
+	for name, change := range map[string]func(*Report){
+		"failed-run": func(r *Report) { r.Status = "FAIL" },
+		"partial":    func(r *Report) { r.After.Complete = false },
+		"write": func(r *Report) {
+			r.Before.Audit = append(r.Before.Audit, device.Event{Operation: device.Import, Outcome: "success"})
+		},
+		"denied-read":      func(r *Report) { r.Readiness.Audit[0].Outcome = "permission-denied" },
+		"tls-name":         func(r *Report) { r.TLSAfter.HostnameValid = false },
+		"tls-der":          func(r *Report) { r.TLSAfter.Certificates = nil },
+		"clock":            func(r *Report) { delete(r.Readiness.Raw, device.ReadClock) },
+		"selected-netconf": func(r *Report) { r.Scope = NETCONFAndCLI },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var changed Report
+			if err := json.Unmarshal(original, &changed); err != nil {
+				t.Fatal(err)
+			}
+			change(&changed)
+			if Assess(changed, CLIOnly).Status == "PASS" {
+				t.Fatal("inconsistent evidence promoted")
+			}
+		})
+	}
+	if Assess(r, NETCONFAndCLI).Status == "PASS" || Assess(r, "unknown").Status == "PASS" {
+		t.Fatal("missing models or unknown scope accepted")
+	}
+	checkout := t.TempDir()
+	if err := os.Mkdir(filepath.Join(checkout, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, "report.json"), original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AssessFile(filepath.Join(checkout, "report.json"), CLIOnly); err == nil {
+		t.Fatal("private assessment entered Git")
 	}
 }
 func TestPrivateEvidenceNeverOverwritesOrEntersCheckout(t *testing.T) {
