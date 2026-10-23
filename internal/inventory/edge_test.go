@@ -147,6 +147,18 @@ func TestInventoryConcurrentParsing(t *testing.T) {
 	wg.Wait()
 }
 
+func TestHTTPSStatusWrappedCipherFields(t *testing.T) {
+	f := synthetic(t, false)
+	f.e.Raw[device.ReadHTTPSStatus] = append(f.e.Raw[device.ReadHTTPSStatus], []byte("HTTP server auth-retry 0 time-window 0\nHTTP secure server ciphersuite: aes-128-cbc\n        ecdhe-rsa-aes-gcm-sha2 tls13-aes128-gcm-sha256\n")...)
+	if s, err := inventory.Parse(f.e, nil); err != nil || !s.Complete {
+		t.Fatalf("wrapped status: %v", err)
+	}
+	f.e.Raw[device.ReadHTTPSStatus] = append(f.e.Raw[device.ReadHTTPSStatus], []byte("        HTTP secure server trustpoint HTTPS-OLD\n")...)
+	if s, err := inventory.Parse(f.e, nil); err == nil || s.Complete {
+		t.Fatal("unknown wrapped field accepted")
+	}
+}
+
 func FuzzInventoryRejectsPartial(f *testing.F) {
 	baseline := synthetic(f, true)
 	f.Add(uint8(0), []byte("------Trustpoint: TEST------\n% CA certificate:\n"))

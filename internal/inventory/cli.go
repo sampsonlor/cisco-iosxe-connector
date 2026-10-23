@@ -60,7 +60,7 @@ func cliLines(raw []byte, op device.Operation) ([]string, error) {
 			return nil, ErrIncomplete
 		}
 		t := strings.ToLower(strings.TrimSpace(line))
-		if strings.HasPrefix(t, "%") && !(op == device.ReadCertificates && (t == "% ca certificate:" || t == "% general purpose certificate:" || t == "% only export the ca certificate in pem format." || strings.HasPrefix(t, "% the specified trustpoint is not enrolled ("))) {
+		if strings.HasPrefix(t, "%") && !(op == device.ReadCertificates && (t == "% ca certificate:" || t == "% self-signed ca certificate:" || t == "% general purpose certificate:" || t == "% only export the ca certificate in pem format." || strings.HasPrefix(t, "% the specified trustpoint is not enrolled ("))) {
 			return nil, ErrIncomplete
 		}
 	}
@@ -69,12 +69,17 @@ func cliLines(raw []byte, op device.Operation) ([]string, error) {
 
 // Certificates are accepted only inside an explicit Trustpoint group with an
 // explicit purpose marker. Naked PEM cannot establish certificate ownership.
-func parsePEM(raw []byte) (map[string][][]byte, error) {
+type pemCertificate struct {
+	der              []byte
+	identity, selfCA bool
+}
+
+func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 	lines, err := cliLines(raw, device.ReadCertificates)
 	if err != nil {
 		return nil, err
 	}
-	groups := map[string][][]byte{}
+	groups := map[string][]pemCertificate{}
 	name, kind := "", ""
 	count := 0
 	for i := 0; i < len(lines); i++ {
@@ -97,13 +102,16 @@ func parsePEM(raw []byte) (map[string][][]byte, error) {
 			return nil, ErrUnsupported
 		}
 		switch strings.ToLower(line) {
-		case "% ca certificate:", "% general purpose certificate:":
+		case "% ca certificate:", "% general purpose certificate:", "% self-signed ca certificate:":
 			if kind != "" {
 				return nil, ErrIncomplete
 			}
 			kind = "LEAF"
 			if strings.EqualFold(line, "% ca certificate:") {
 				kind = "CA"
+			}
+			if strings.EqualFold(line, "% self-signed ca certificate:") {
+				kind = "SELF_CA"
 			}
 			continue
 		case "% only export the ca certificate in pem format.":
@@ -142,15 +150,29 @@ func parsePEM(raw []byte) (map[string][][]byte, error) {
 			return nil, ErrIncomplete
 		}
 		cert, err := x509.ParseCertificate(der)
-		if err != nil || (kind == "CA") != cert.IsCA {
+		if err != nil {
 			return nil, ErrIncomplete
 		}
-		for _, old := range groups[name] {
-			if bytes.Equal(der, old) {
+		alias := false
+		for j, old := range groups[name] {
+			if bytes.Equal(der, old.der) {
+				if kind == "LEAF" && cert.IsCA && old.selfCA && !old.identity {
+					groups[name][j].identity = true
+					alias = true
+					break
+				}
 				return nil, ErrIncomplete
 			}
 		}
-		groups[name] = append(groups[name], der)
+		if !alias {
+			if (kind != "LEAF") != cert.IsCA {
+				return nil, ErrIncomplete
+			}
+			if kind == "SELF_CA" && (!bytes.Equal(cert.RawIssuer, cert.RawSubject) || cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature) != nil) {
+				return nil, ErrIncomplete
+			}
+			groups[name] = append(groups[name], pemCertificate{der: der, identity: kind == "LEAF", selfCA: kind == "SELF_CA"})
+		}
 		kind = ""
 		count++
 		if count > 128 {
@@ -168,7 +190,7 @@ func parsePEM(raw []byte) (map[string][][]byte, error) {
 	return groups, nil
 }
 
-func checkPKICLI(raw []byte, groups map[string][][]byte) error {
+func checkPKICLI(raw []byte, groups map[string][]pemCertificate) error {
 	lines, err := cliLines(raw, device.ReadPKI)
 	if err != nil {
 		return err
@@ -230,7 +252,11 @@ func checkHTTPS(raw []byte, active string) error {
 		return err
 	}
 	fields := map[string]string{}
+	cipherContinuation := false
+	cipherNames := regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)+(?:\s+[a-z0-9]+(?:-[a-z0-9]+)+)*$`)
+	authRetry := regexp.MustCompile(`^HTTP server auth-retry [0-9]{1,5} time-window [0-9]{1,5}$`)
 	for _, line := range lines {
+		indented := strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -239,8 +265,16 @@ func checkHTTPS(raw []byte, active string) error {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		if !ok {
+			if cipherContinuation && indented && cipherNames.MatchString(line) {
+				continue
+			}
+			if authRetry.MatchString(line) {
+				cipherContinuation = false
+				continue
+			}
 			return ErrUnsupported
 		}
+		cipherContinuation = key == "HTTP secure server ciphersuite"
 		switch key {
 		case "HTTP secure server status", "HTTP secure server trustpoint", "HTTP secure server port", "HTTP secure server capability":
 			if _, seen := fields[key]; seen {

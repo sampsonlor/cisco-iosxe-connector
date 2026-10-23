@@ -46,6 +46,8 @@ type fixture struct {
 	stall           bool
 	malformed       string
 	clientKey       ssh.PublicKey
+	oneSession      bool
+	commandOutputs  map[string]string
 }
 
 func newSigner(t *testing.T) ssh.Signer {
@@ -104,11 +106,17 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 				}
 				defer sc.Close()
 				go ssh.DiscardRequests(reqs)
+				sessionCount := 0
 				for nc := range chans {
 					if nc.ChannelType() != "session" {
 						_ = nc.Reject(ssh.UnknownChannelType, "unsupported")
 						continue
 					}
+					if f.oneSession && sessionCount > 0 {
+						_ = nc.Reject(ssh.ResourceShortage, "one execution per connection")
+						continue
+					}
+					sessionCount++
 					ch, requests, err := nc.Accept()
 					if err != nil {
 						return
@@ -137,6 +145,9 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 								f.record("exec:" + m.Command)
 								_ = req.Reply(true, nil)
 								out := f.cliOutput
+								if value, ok := f.commandOutputs[m.Command]; ok {
+									out = value
+								}
 								if out == "" {
 									out = "synthetic successful read\n"
 								}

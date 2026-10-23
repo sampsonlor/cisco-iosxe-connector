@@ -35,6 +35,11 @@ collect raw evidence; [certificate inventory](docs/certificate-inventory.md) in
 Development reuses the `develop` branch, completing
 one backlog item at a time; `main` retains its required PR checks.
 
+A [manual Windows read-only lab tool](docs/local-readonly-lab.md) is available
+under `cmd/iosxe-lab`. It uses a local password dialog and private evidence
+outside Git checkouts. Its availability does not establish live acceptance;
+missing permissions/models and unverified account restrictions remain visible.
+
 ## Local checks
 
 Python 3.12+ and Go 1.27.3 are the reference tools. The SDK's earlier supported

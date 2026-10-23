@@ -22,6 +22,7 @@ type Assignment struct {
 }
 
 type Certificate struct {
+	SelfSignedIdentity             bool
 	Trustpoint, SHA256, Kind, Role string
 	DER                            []byte
 }
@@ -97,14 +98,19 @@ func Parse(e device.Evidence, assignments []Assignment) (Snapshot, error) {
 	activeLeaves := 0
 	for _, name := range names {
 		leaves := 0
-		for _, der := range groups[name] {
+		for _, entry := range groups[name] {
+			der := entry.der
 			cert, _ := x509.ParseCertificate(der) // parsePEM already validates every DER.
 			h := sha256.Sum256(der)
 			c := Certificate{Trustpoint: name, SHA256: hex.EncodeToString(h[:]), DER: bytes.Clone(der), Kind: "LEAF", Role: "INACTIVE"}
-			if cert.IsCA {
+			if !entry.identity {
 				c.Kind = "CA"
 				c.Role = "CA"
 			} else {
+				if cert.IsCA {
+					c.Kind = "CA_IDENTITY"
+					c.SelfSignedIdentity = entry.selfCA
+				}
 				leaves++
 				if name == active {
 					c.Role = "ACTIVE"

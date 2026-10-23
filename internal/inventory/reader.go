@@ -77,7 +77,7 @@ func (r *Reader) ReadHTTPS(ctx context.Context, a provider.DeviceAccess) (provid
 			index[c.SHA256] = i
 			out.Certificates = append(out.Certificates, provider.PublicCertificate{DER: slices.Clone(c.DER)})
 		}
-		out.Certificates[i].Bindings = append(out.Certificates[i].Bindings, provider.TrustpointBinding{Trustpoint: c.Trustpoint, Role: c.Role})
+		out.Certificates[i].Bindings = append(out.Certificates[i].Bindings, provider.TrustpointBinding{Trustpoint: c.Trustpoint, Role: c.Role, SelfSignedIdentity: c.SelfSignedIdentity})
 	}
 	return out, nil
 }
