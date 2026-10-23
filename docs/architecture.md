@@ -5,7 +5,9 @@ AD CS. The HTTP boundary and read-only Entity Provider with SQLite metadata
 are implemented, along with read-only NETCONF/SSH transport libraries.
 Certificate inventory and transport-to-Provider wiring are implemented in
 `internal/inventory`; see [evidence and role semantics](certificate-inventory.md).
-Issuance, deployment and a runnable authenticated host remain planned.
+The [durable journal and shared import gate](durable-journal.md) are implemented
+in `internal/journal` and `internal/lifecycle`. Actual device CSR/import,
+issuance, activation and a runnable authenticated host remain planned.
 Names and network details below are synthetic.
 
 ```mermaid
@@ -135,12 +137,15 @@ use an approved public CA bundle reference.
 
 ## State and recovery invariants
 
-`PRECHECK → CSR_READY → AWAITING_ISSUANCE → CERT_READY → STAGED → SWITCHING →
+`PRECHECK → KEY_CREATING → CSR_READY → AWAITING_ISSUANCE → CERT_READY → IMPORTING → STAGED → SWITCHING →
 ACTIVE_VERIFIED → COMMITTED` is the success path. Failure states include
 `FAILED_NO_SWITCH`, `ROLLED_BACK`, `ACTIVE_NOT_PERSISTED` and `NEEDS_OPERATOR`.
 
 - One durable device/service lock covers API and worker mutations. Initial
   deployment uses one active process and a dedicated SQLite WAL volume.
+  The current journal retains KEY_CREATING/IMPORTING/STAGED ownership across
+  restarts; only an unstarted PRECHECK abort releases it. Later recovery and
+  activation states require their own implementation and schema migration.
 - Persist intent before irreversible side effects. After a timeout or restart,
   observe the actual device before retrying. No blind key regeneration or
   ACME resubmission.

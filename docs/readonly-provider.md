@@ -59,7 +59,7 @@ Startup verifies the durability settings and refuses unsupported schema
 versions, foreign databases and unreadable/corrupt files. It never silently
 resets the database. Ownership is checked before enabling WAL; a regression
 test compares a rejected foreign database byte for byte before/after opening.
-This store is separate from the future operation journal:
+This store is separate from the [operation journal](durable-journal.md):
 it does not implement device intent, service locks or crash recovery of writes.
 
 The caller supplies an absolute local database path. Newly created directories

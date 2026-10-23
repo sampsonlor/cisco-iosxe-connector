@@ -6,6 +6,10 @@
 
 当前实现仓库检查、SDK 行为表征、HTTP 边界、只读 Provider/SQLite 及 NETCONF/SSH 合成服务器测试。`tests/catalog.json` 是用例清单；
 `implemented` 表示有可执行测试，`planned` 表示验收目标仍待实现。
+现已实现操作 Journal 与共享导入门控，覆盖真实临时 SQLite 的服务锁、
+幂等关联、先保存意图再调用导入、崩溃后保留未决意图。详见
+[持久日志与范围](durable-journal.md)。导入器目前是计数测试替身，实际
+IOS XE 密钥/CSR/导入、证书策略校验和 HTTP 生命周期接入仍在后续任务。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。
 
 ## 1. 流水线分层
