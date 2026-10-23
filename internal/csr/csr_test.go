@@ -6,12 +6,39 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"strings"
+	"net"
 	"testing"
 )
 
 func spec() Spec {
 	return Spec{CommonName: "router.example.test", Organization: "Example", OrganizationalUnit: "Infrastructure", DNSNames: []string{"router.example.test", "router"}, RSABits: 2048}
+}
+
+func TestCSRRejectsUnrequestedExtensionsAndSignaturePolicy(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	for name, change := range map[string]func(*x509.CertificateRequest){
+		"CA-extension": func(q *x509.CertificateRequest) {
+			q.ExtraExtensions = []pkix.Extension{{Id: asn1.ObjectIdentifier{2, 5, 29, 19}, Value: []byte{0x30, 0}}}
+		},
+		"IP-SAN":              func(q *x509.CertificateRequest) { q.IPAddresses = []net.IP{net.ParseIP("192.0.2.10")} },
+		"signature-algorithm": func(q *x509.CertificateRequest) { q.SignatureAlgorithm = x509.SHA384WithRSA },
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := &x509.CertificateRequest{Subject: pkix.Name{CommonName: spec().CommonName, Organization: []string{"Example"}, OrganizationalUnit: []string{"Infrastructure"}}, DNSNames: spec().DNSNames, SignatureAlgorithm: x509.SHA256WithRSA}
+			change(q)
+			der, err := x509.CreateCertificateRequest(rand.Reader, q, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if Validate(Result{DER: der, PublicKeyDER: pub, NonExportable: true}, spec()) == nil {
+				t.Fatal("unrequested CSR content accepted")
+			}
+		})
+	}
 }
 func TestCSRSignatureNamesAndDeviceKey(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -64,6 +91,4 @@ func TestCSRSignatureNamesAndDeviceKey(t *testing.T) {
 	if KeyLabel("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") != "ILM-K-aaaaaaaabbbb4ccc8dddeeeeeeeeeeee" || KeyLabel("bad") != "" {
 		t.Fatal("key labels not bound to operation")
 	}
-	_ = asn1.ObjectIdentifier{2, 5, 29, 17}
-	_ = strings.Builder{}
 }

@@ -28,9 +28,10 @@ type Certificate struct {
 }
 
 type Snapshot struct {
-	Complete         bool
-	ActiveTrustpoint string
-	Certificates     []Certificate
+	UnenrolledTrustpoints []string
+	Complete              bool
+	ActiveTrustpoint      string
+	Certificates          []Certificate
 }
 
 var namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
@@ -97,6 +98,10 @@ func Parse(e device.Evidence, assignments []Assignment) (Snapshot, error) {
 	sort.Strings(names)
 	activeLeaves := 0
 	for _, name := range names {
+		if len(groups[name]) == 0 {
+			s.UnenrolledTrustpoints = append(s.UnenrolledTrustpoints, name)
+			continue
+		}
 		leaves := 0
 		for _, entry := range groups[name] {
 			der := entry.der

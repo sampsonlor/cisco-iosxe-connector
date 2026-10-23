@@ -45,8 +45,14 @@ models and ILM Core integration still require their own live evidence.
 The [operation journal and shared import gate](docs/durable-journal.md) implement
 durable service ownership, request/operation correlation and commit-before-dispatch
 with SQLite WAL. Counting-importer tests cover concurrency, storage failure and
-crash recovery of intent. Actual CSR/issuance/import adapters and activation are
-still future milestones; the read-only HTTP Provider does not enable writes.
+crash recovery of intent. Signing, inactive import and activation are future
+milestones; the read-only HTTP Provider does not enable writes.
+
+[Device CSR components](docs/device-csr.md) now provide a separate opt-in,
+pinned SSH adapter, public CSR/key validation and durable generation intent.
+Offline SSH/SQLite tests cover this path; actual target write acceptance remains
+private. HTTP lifecycle wiring, signing, inactive import and activation follow
+their own milestones.
 
 ## Local checks
 

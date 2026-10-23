@@ -6,8 +6,9 @@ are implemented, along with read-only NETCONF/SSH transport libraries.
 Certificate inventory and transport-to-Provider wiring are implemented in
 `internal/inventory`; see [evidence and role semantics](certificate-inventory.md).
 The [durable journal and shared import gate](durable-journal.md) are implemented
-in `internal/journal` and `internal/lifecycle`. Actual device CSR/import,
-issuance, activation and a runnable authenticated host remain planned.
+in `internal/journal` and `internal/lifecycle`. [Device CSR components](device-csr.md)
+include the opt-in SSH adapter and public validation, with private write acceptance
+still pending. Actual import, issuance, activation and an authenticated host remain planned.
 Names and network details below are synthetic.
 
 ```mermaid
