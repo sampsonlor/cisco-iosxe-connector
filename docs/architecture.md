@@ -2,7 +2,8 @@
 
 Scope: OmniTrust ILM 2.19.0 Entity Provider v1, Cisco C8000V HTTPS and Microsoft
 AD CS. The HTTP boundary and read-only Entity Provider with SQLite metadata
-are implemented; device transports, issuance and deployment remain planned.
+are implemented, along with read-only NETCONF/SSH transport libraries.
+Inventory parsing, transport-to-Provider wiring, issuance and deployment remain planned.
 Names and network details below are synthetic.
 
 ```mermaid

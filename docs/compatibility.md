@@ -53,6 +53,15 @@ offline connector boundary; actual Core acceptance is still pending C-009.
   Trustpoint switch effects and configuration persistence on the target image.
 - AD CS actual template identity, SAN policy, EKU, chain and enrollment rights.
 
+## SSH dependency scan scope
+
+The read-only transports pin `golang.org/x/crypto` v0.58.0 and import `ssh`,
+not `openpgp`. The verbose Go scan reports
+[GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) at module level for the
+unmaintained OpenPGP package (no fixed version), with zero affected imported
+packages or reachable symbols in this project, including tests. The advisory
+is recorded rather than suppressed; the existing vulnerability gate is unchanged.
+
 References:
 
 - [2.19.0 LocationController](https://github.com/OmniTrustILM/interfaces/blob/e62233777518296f70a151cf766dde5e1a6cea2d/src/main/java/com/otilm/api/interfaces/connector/entity/LocationController.java)

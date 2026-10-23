@@ -7,6 +7,7 @@ toolchain go1.26.10
 require (
 	github.com/OmniTrustILM/go-sdk v1.1.0
 	github.com/google/uuid v1.6.0
+	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.61.0
 )
 
