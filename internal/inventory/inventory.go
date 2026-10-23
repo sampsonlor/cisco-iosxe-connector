@@ -22,6 +22,7 @@ type Assignment struct {
 }
 
 type Certificate struct {
+	SelfSignedIdentity             bool
 	Trustpoint, SHA256, Kind, Role string
 	DER                            []byte
 }
