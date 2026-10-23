@@ -1,0 +1,25 @@
+{
+  "releaseReference": "Cisco IOS XE 26.1 / 2611; live device schemas not verified",
+  "repository": "YangModels/yang",
+  "commit": "7cb93ea27b7ee86ad3dd9f82998146aa838d13b8",
+  "files": [
+    {
+      "path": "vendor/cisco/xe/2611/Cisco-IOS-XE-http.yang",
+      "gitBlob": "3eb0ac75cfc57869444fc94f913fffce93a26b74",
+      "sha256": "97f5884c4a8fa1ebd11ad8f7db6906dcbfb31146e66c03a6188b47c6ff76d077",
+      "source": "https://github.com/YangModels/yang/blob/7cb93ea27b7ee86ad3dd9f82998146aa838d13b8/vendor/cisco/xe/2611/Cisco-IOS-XE-http.yang"
+    },
+    {
+      "path": "vendor/cisco/xe/2611/Cisco-IOS-XE-native.yang",
+      "gitBlob": "1adb605e6bdf9ead74dbff91bdf6517a96e27985",
+      "sha256": "7dd204c5e58538d799d49984bf453e4421cbdf83426853fcd70de224f73ef3f6",
+      "source": "https://github.com/YangModels/yang/blob/7cb93ea27b7ee86ad3dd9f82998146aa838d13b8/vendor/cisco/xe/2611/Cisco-IOS-XE-native.yang"
+    },
+    {
+      "path": "vendor/cisco/xe/2611/Cisco-IOS-XE-crypto-pki-oper.yang",
+      "gitBlob": "5782e32c2f9c162a5d5f6006092f7d3e1a8e9ffe",
+      "sha256": "996b0bd882ee92df645db5f2fe0c5cf424e5f2a29089adaec70818c732e35c2a",
+      "source": "https://github.com/YangModels/yang/blob/7cb93ea27b7ee86ad3dd9f82998146aa838d13b8/vendor/cisco/xe/2611/Cisco-IOS-XE-crypto-pki-oper.yang"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 环境条件可以通过后续测试逐项关闭；单个写入阶段只要求其自身前置条件满足。
 离线测试不等待设备 NTP、NETCONF、DNS、RA 或模板配置完成。
 
-当前实现仓库检查、SDK 行为表征、HTTP 边界和只读 Provider/SQLite 测试。`tests/catalog.json` 是用例清单；
+当前实现仓库检查、SDK 行为表征、HTTP 边界、只读 Provider/SQLite 及 NETCONF/SSH 合成服务器测试。`tests/catalog.json` 是用例清单；
 `implemented` 表示有可执行测试，`planned` 表示验收目标仍待实现。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。
 
@@ -20,7 +20,7 @@ CI 通过不等于所有清单用例通过，也不等于已完成生产自动�
 
 目前启用 P0 与 P1 中的离线 HTTP 边界、Entity 持久化及只读 Provider 检查，
 详见 [边界实现](provider-boundary.md) 和 [只读 Provider](readonly-provider.md)。
-设备发现及后续阶段仍为验收设计，不以空实现、`skip` 或始终成功的 mock 代替。
+设备库存语义解析、真实设备验收及后续写入阶段仍为验收设计，不以空实现、`skip` 或始终成功的 mock 代替。
 发布镜像与设备部署分别设门槛。
 
 ## 2. 已启用的 P0

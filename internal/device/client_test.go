@@ -2,9 +2,11 @@ package device
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -34,6 +36,7 @@ type fixture struct {
 	log             []string
 	auth            atomic.Int32
 	connections     []net.Conn
+	acceptDone      chan struct{}
 	modules         []string
 	chunked         bool
 	subsystemReject bool
@@ -42,6 +45,7 @@ type fixture struct {
 	cliOutput       string
 	stall           bool
 	malformed       string
+	clientKey       ssh.PublicKey
 }
 
 func newSigner(t *testing.T) ssh.Signer {
@@ -66,6 +70,7 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 		t.Fatal(err)
 	}
 	f.listener = ln
+	f.acceptDone = make(chan struct{})
 	cfg := &ssh.ServerConfig{PasswordCallback: func(_ ssh.ConnMetadata, b []byte) (*ssh.Permissions, error) {
 		f.auth.Add(1)
 		if string(b) != "synthetic-test-password" {
@@ -74,7 +79,15 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 		return nil, nil
 	}}
 	cfg.AddHostKey(f.signer)
+	cfg.PublicKeyCallback = func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		f.auth.Add(1)
+		if f.clientKey != nil && bytes.Equal(key.Marshal(), f.clientKey.Marshal()) {
+			return nil, nil
+		}
+		return nil, errors.New("denied")
+	}
 	f.wg.Go(func() {
+		defer close(f.acceptDone)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
@@ -142,6 +155,7 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 	})
 	t.Cleanup(func() {
 		_ = ln.Close()
+		<-f.acceptDone
 		f.mu.Lock()
 		for _, c := range f.connections {
 			_ = c.Close()
@@ -262,7 +276,7 @@ func testClient(t *testing.T, f *fixture, netconf, cli bool) *Client {
 	if cli {
 		target.CLI = &Endpoint{22, "secret://test/reader", "hostkey://test/ssh"}
 	}
-	c, err := NewClient(map[string]Target{"router-a": target}, testResolver{f.signer.PublicKey(), "synthetic-test-password"}, time.Second)
+	c, err := NewClient(map[string]Target{"router-a": target}, testResolver{f.signer.PublicKey(), "synthetic-test-password"}, 3*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,5 +442,34 @@ func TestDevicePolicyAndAuthentication(t *testing.T) {
 	bad := map[string]Target{"router-a": {Address: netip.MustParseAddr("192.0.2.10"), NETCONF: Endpoint{830, "secret://test/read", "hostkey://test/nc"}, CLI: &Endpoint{2222, "secret://test/recovery", "hostkey://test/cli"}}}
 	if _, err := NewClient(bad, testResolver{}, time.Second); err == nil {
 		t.Fatal("different fallback identity accepted")
+	}
+}
+
+type keyResolver struct {
+	testResolver
+	signer ssh.Signer
+}
+
+func (r keyResolver) Credentials(context.Context, string) (Credentials, error) {
+	return Credentials{Username: "readonly-test", Signers: []ssh.Signer{r.signer}}, nil
+}
+func TestDevicePublicKeyAuthentication(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaSigner, err := ssh.NewSignerFromKey(rsaKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, signer := range []ssh.Signer{newSigner(t), rsaSigner} {
+		f := startFixture(t, &fixture{clientKey: signer.PublicKey()})
+		c := testClient(t, f, false, true)
+		c.resolver = keyResolver{testResolver: testResolver{key: f.signer.PublicKey()}, signer: signer}
+		e, err := c.Collect(context.Background(), "router-a")
+		if err != nil || !e.Complete {
+			t.Fatalf("public key authentication: %v", err)
+		}
+		assertReadOnlyAudit(t, f.logs())
 	}
 }
