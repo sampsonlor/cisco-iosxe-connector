@@ -2,7 +2,7 @@
 
 ## Enabled now
 
-`ci.yml` handles `pull_request`, push to main and manual dispatch. All jobs run
+`ci.yml` handles `pull_request`, push to main/develop and manual dispatch. All jobs run
 on GitHub-hosted Ubuntu 24.04 with `contents: read`. Checkout does not persist
 credentials. Actions use reviewed full commit hashes. Tool modules and Go
 versions use exact releases. Dependency checks retain Go's checksum verification.

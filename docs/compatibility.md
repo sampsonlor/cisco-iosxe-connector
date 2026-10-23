@@ -30,20 +30,24 @@ route manifest records **204**. A separate test asserts that these exact
 differences remain enumerated. This is a characterization test, not a waiver
 or a claim that strict 2.19.0 compatibility has passed.
 
-Before shipping a provider, either adapt these specific routes to the target
-contract or establish and document actual ILM 2.19.0 acceptance. Prefer a small
-boundary adapter or an upstream SDK fix over forking generated DTOs. A future
-strict connector test must expect the decided target behavior and must not
-reuse the SDK-observation values as its expected results.
+The connector's `internal/provider.NewBoundary` now adapts successful 200
+responses on those **three routes only** to 204, removes the response body
+and Content-Length, and preserves errors. The kind-level validator remains
+200. `TestBoundaryV1Contract` independently expects the target 204;
+`TestValidationStatusAdapter` checks error preservation. The upstream SDK
+observation tests and manifest remain unchanged. This resolves K-001 for the
+offline connector boundary; actual Core acceptance is still pending C-009.
 
 ## Other boundaries still to validate
 
-- Required/null/empty attributes and every attribute subtype used by this
-  connector; the initial round-trip test uses v3 string content, which is
-  declared by the pinned 2.19.0 RequestAttribute source. Legacy v2 content
-  decoding remains unproven and must not be advertised as compatible.
-- SDK generated models may preserve unknown JSON properties. HTTP strict
-  decoding alone must not be treated as application-level allowlisting.
+- The boundary supports only single-value **v3 string** request attributes,
+  with exact UUID/name pairs and no reference indirection. It rejects v2,
+  null/empty/unknown attributes and unknown envelope/content properties before
+  SDK decoding. See [boundary policy and tests](provider-boundary.md).
+  Other attribute subtypes and actual Core form submission remain unproven.
+- SDK generated models still preserve unknown properties. The boundary
+  decodes JSON independently, rejects duplicate keys, and applies exact field
+  allowlists; SDK strict decoding is retained as an additional check.
 - Provider authentication/authorization and real Core lifecycle calls.
 - Device CSR extraction, certificate import prompts, chain association,
   Trustpoint switch effects and configuration persistence on the target image.
