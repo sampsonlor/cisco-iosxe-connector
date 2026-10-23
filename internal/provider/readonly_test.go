@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	mdl "github.com/OmniTrustILM/go-sdk/connector/model/entity/v1"
+
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/provider"
 )
 
@@ -172,6 +174,9 @@ func TestReadOnlyLocationAndCapabilities(t *testing.T) {
 	if w.Code != 200 || strings.Contains(w.Body.String(), "/locations/csr") || strings.Contains(w.Body.String(), "/locations/push") || strings.Contains(w.Body.String(), "/locations/remove") {
 		t.Fatalf("unsupported write advertised: %s", w.Body)
 	}
+	if w := request(h, "DELETE", b, ""); w.Code != 204 || r.calls.Load() != 2 {
+		t.Fatalf("metadata deletion touched device: %d calls=%d", w.Code, r.calls.Load())
+	}
 }
 
 func TestReadOnlyInventoryFailures(t *testing.T) {
@@ -201,6 +206,14 @@ func TestReadOnlyInventoryFailures(t *testing.T) {
 func TestReadOnlyAttributeDefinitions(t *testing.T) {
 	h, _ := openRO(t, filepath.Join(t.TempDir(), "entities.sqlite"), roConfig(), nil)
 	id := createRO(t, h)
+	info := request(h, "GET", "/v1", "")
+	if info.Code != 200 || strings.Contains(info.Body.String(), `"name":"getLocationDetail"`) {
+		t.Fatalf("unconfigured reader advertised: %s", info.Body)
+	}
+	source, err := os.ReadFile(filepath.Join("..", "..", "contracts", "ilm-2.19.0", "java", "DataAttributeV3.java"))
+	if err != nil || !strings.Contains(string(source), "private int version = 3;") {
+		t.Fatalf("review pinned definition version: %v", err)
+	}
 	for _, tc := range []struct {
 		path  string
 		count int
@@ -219,10 +232,21 @@ func TestReadOnlyAttributeDefinitions(t *testing.T) {
 		if len(attrs) != tc.count {
 			t.Fatalf("missing definitions: %s", w.Body)
 		}
+		// Exercise the SDK's numeric-version/type discriminators as a client.
+		encoded, _ := json.Marshal(attrs)
+		var decoded []mdl.BaseAttributeDto
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatalf("SDK cannot decode provider definitions: %v", err)
+		}
+		for _, a := range decoded {
+			if a.BaseAttributeDtoV3 == nil || a.BaseAttributeDtoV3.DataAttributeV3 == nil {
+				t.Fatal("definition discriminator lost v3 data")
+			}
+		}
 		for _, a := range attrs {
 			m := a.(map[string]any)
 			props := m["properties"].(map[string]any)
-			if m["schemaVersion"] != "v3" || m["version"] != float64(1) || m["type"] != "data" || m["contentType"] != "string" || props["required"] != true {
+			if m["schemaVersion"] != "v3" || m["version"] != float64(3) || m["type"] != "data" || m["contentType"] != "string" || props["required"] != true {
 				t.Fatalf("wrong v3 definition: %v", m)
 			}
 		}

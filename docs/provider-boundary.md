@@ -2,9 +2,10 @@
 
 `internal/provider.NewBoundary(next, Config)` wraps the official Go SDK
 v1.1.0 handler. This is an HTTP library, with no listener, credentials,
-persistence, issuer, command execution or device connection. Entity Provider
-storage, attribute-definition DTOs and capability advertisement are backlog
-#3. Do not deploy the SDK test backend as a connector.
+persistence, issuer, command execution or device connection of its own. The
+[read-only Provider](readonly-provider.md) now supplies Entity storage,
+attribute-definition DTOs and capability advertisement. Do not deploy the SDK
+test backend as a connector.
 
 ## Request flow
 
@@ -26,7 +27,7 @@ Authentication must wrap the boundary. Configure the SDK explicitly with
 SDK's `WithKindAttributes`, `WithLocationAttributes`,
 `WithPushCertificateAttributes` and `WithGenerateCsrAttributes`; the SDK
 otherwise returns empty definitions/bare validation success by default.
-The next backlog item supplies these implementations. This library does not
+The read-only Provider supplies these implementations. This library does not
 authenticate a caller or advertise a deployable capability on its own.
 
 Every entity-scoped route resolves the canonical entity UUID to an approved

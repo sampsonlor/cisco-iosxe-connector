@@ -6,7 +6,7 @@ An independent, community connector for certificate discovery and renewal on
 Cisco IOS XE. Initial target: the HTTPS service on Cisco C8000V, with OmniTrust
 ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
-**Status: ILM v1 boundary library and offline contract tests. There is no deployable
+**Status: read-only Entity Provider library, SQLite metadata and offline tests. There is no deployable
 connector or device-writing implementation yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
@@ -27,8 +27,9 @@ See the [architecture and sequence diagrams](docs/architecture.md),
 [CI trust boundaries](docs/ci-security.md) and
 [implementation milestones](docs/roadmap.md).
 
-The first implementation is [the v1 HTTP boundary](docs/provider-boundary.md)
-in `internal/provider`. Development reuses the `develop` branch, completing
+The implementation includes [the v1 HTTP boundary](docs/provider-boundary.md)
+and [read-only Provider](docs/readonly-provider.md) in `internal/provider`.
+Development reuses the `develop` branch, completing
 one backlog item at a time; `main` retains its required PR checks.
 
 ## Local checks
@@ -44,8 +45,9 @@ go vet ./...
 go test -race -count=1 ./...
 ```
 
-The Go tests exercise the official SDK and connector boundary through an
-in-process HTTP recorder and test-only provider. They never connect to a router, CA, DNS service or ILM
+The Go tests exercise the official SDK, connector boundary and read-only
+Provider through in-process HTTP, real temporary SQLite files and synthetic
+inventory readers. They never connect to a router, CA, DNS service or ILM
 instance. They do not implement certificate issuance or device configuration.
 Planned acceptance cases remain explicitly `planned` in the catalog; they
 are not represented by skipped or empty passing tests.
