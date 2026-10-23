@@ -46,6 +46,7 @@ type fixture struct {
 	stall           bool
 	malformed       string
 	clientKey       ssh.PublicKey
+	oneSession      bool
 }
 
 func newSigner(t *testing.T) ssh.Signer {
@@ -104,11 +105,17 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 				}
 				defer sc.Close()
 				go ssh.DiscardRequests(reqs)
+				sessionCount := 0
 				for nc := range chans {
 					if nc.ChannelType() != "session" {
 						_ = nc.Reject(ssh.UnknownChannelType, "unsupported")
 						continue
 					}
+					if f.oneSession && sessionCount > 0 {
+						_ = nc.Reject(ssh.ResourceShortage, "one execution per connection")
+						continue
+					}
+					sessionCount++
 					ch, requests, err := nc.Accept()
 					if err != nil {
 						return

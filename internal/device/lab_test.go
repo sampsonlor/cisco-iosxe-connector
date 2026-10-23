@@ -37,3 +37,15 @@ func TestLabReadinessDeniedDoesNotContinue(t *testing.T) {
 		t.Fatal("denied readiness continued or exposed partial success")
 	}
 }
+
+func TestCLICommandsUseIndependentConnections(t *testing.T) {
+	f := startFixture(t, &fixture{oneSession: true})
+	c := testClient(t, f, false, true)
+	e, err := c.Collect(context.Background(), "router-a")
+	if err != nil || !e.Complete || f.auth.Load() != 5 {
+		t.Fatalf("single-exec server: complete=%v connections=%d err=%v", e.Complete, f.auth.Load(), err)
+	}
+	if len(f.logs()) != 5 {
+		t.Fatal("fixed reads retried or omitted")
+	}
+}
