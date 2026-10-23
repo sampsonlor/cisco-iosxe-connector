@@ -42,6 +42,12 @@ outside Git checkouts. Private CLI-only acceptance is recorded under
 tool performs only fixed reads. NTP is deferred to the next live test. NETCONF
 models and ILM Core integration still require their own live evidence.
 
+The [operation journal and shared import gate](docs/durable-journal.md) implement
+durable service ownership, request/operation correlation and commit-before-dispatch
+with SQLite WAL. Counting-importer tests cover concurrency, storage failure and
+crash recovery of intent. Actual CSR/issuance/import adapters and activation are
+still future milestones; the read-only HTTP Provider does not enable writes.
+
 ## Local checks
 
 Python 3.12+ and Go 1.27.3 are the reference tools. The SDK's earlier supported
