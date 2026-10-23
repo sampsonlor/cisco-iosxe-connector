@@ -31,6 +31,10 @@ func (c *Client) readNETCONF(ctx context.Context, t Target, e *Evidence) (err er
 		return err
 	}
 	defer cleanup()
+	if e.LocalAddresses == nil {
+		e.LocalAddresses = map[string]string{}
+	}
+	e.LocalAddresses["netconf"] = client.LocalAddr().String()
 	ch, requests, err := client.OpenChannel("session", nil)
 	if err != nil {
 		_ = client.Close()
@@ -71,6 +75,7 @@ func (c *Client) readNETCONF(ctx context.Context, t Target, e *Evidence) (err er
 	if err != nil {
 		return err
 	}
+	e.NETCONFHello = append([]byte(nil), raw...)
 	for i, op := range []Operation{ReadPKI, ReadBinding} {
 		available := modules[pkiNamespace]
 		if op == ReadBinding {

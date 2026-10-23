@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
-	"net"
 	"sync"
 	"testing"
 	"time"
@@ -73,5 +72,4 @@ func TestPinnedTLSBaselineAndMismatch(t *testing.T) {
 	if _, err := ProbeTLS(ctx, address, "router.example.test", der, nil); err == nil {
 		t.Fatal("cancel ignored")
 	}
-	_ = net.IPv4len
 }

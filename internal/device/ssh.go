@@ -65,11 +65,15 @@ func (c *Client) connect(ctx context.Context, t Target, ep Endpoint) (*ssh.Clien
 }
 
 var readCommands = map[Operation]string{
-	ReadVersion:      "show version",
-	ReadPKI:          "show crypto pki trustpoints",
-	ReadBinding:      "show running-config | include ^ip http secure-trustpoint",
-	ReadCertificates: "show crypto pki certificates pem",
-	ReadHTTPSStatus:  "show ip http server status",
+	ReadVersion:        "show version",
+	ReadPKI:            "show crypto pki trustpoints",
+	ReadBinding:        "show running-config | include ^ip http secure-trustpoint",
+	ReadCertificates:   "show crypto pki certificates pem",
+	ReadHTTPSStatus:    "show ip http server status",
+	ReadClock:          "show clock detail",
+	ReadNTP:            "show ntp status",
+	ReadPrivilege:      "show privilege",
+	ReadProtocolConfig: "show running-config | include ^netconf|^restconf",
 }
 
 type boundedOutput struct {
@@ -97,34 +101,57 @@ func (b *boundedOutput) snapshot() ([]byte, bool) {
 }
 
 func (c *Client) readCLI(ctx context.Context, t Target, e *Evidence) error {
+	return c.readCLIOperations(ctx, t, e, []Operation{ReadVersion, ReadPKI, ReadBinding, ReadCertificates, ReadHTTPSStatus})
+}
+func (c *Client) readCLIOperations(ctx context.Context, t Target, e *Evidence, ops []Operation) error {
+	// IOS XE can terminate the SSH transport after one exec. Plan a fresh
+	// pinned connection for each command; never retry a rejected command.
+	for _, op := range ops {
+		if e.Capabilities[op].Available {
+			continue
+		}
+		if err := c.readCLICommand(ctx, t, e, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (c *Client) readCLICommand(ctx context.Context, t Target, e *Evidence, op Operation) error {
 	client, cleanup, err := c.connect(ctx, t, *t.CLI)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 	defer client.Close()
-	for _, op := range []Operation{ReadVersion, ReadPKI, ReadBinding, ReadCertificates, ReadHTTPSStatus} {
-		if e.Capabilities[op].Available {
-			continue
-		}
-		session, err := client.NewSession()
-		if err != nil {
-			return ErrSessionRejected
-		}
-		output := &boundedOutput{limit: c.limit, close: func() { _ = client.Close() }}
-		session.Stdout = output
-		session.Stderr = output
-		runErr := session.Run(readCommands[op])
-		_ = session.Close()
-		raw, overflow := output.snapshot()
-		err = classifyCLI(raw, runErr, overflow)
-		if ctx.Err() != nil {
-			err = ctx.Err()
-		}
-		e.record("ssh", op, raw, err)
-		if err != nil {
-			return err
-		}
+	if e.LocalAddresses == nil {
+		e.LocalAddresses = map[string]string{}
+	}
+	e.LocalAddresses["ssh"] = client.LocalAddr().String()
+	session, err := client.NewSession()
+	if err != nil {
+		return ErrSessionRejected
+	}
+	output := &boundedOutput{limit: c.limit, close: func() { _ = client.Close() }}
+	session.Stdout = output
+	session.Stderr = output
+	runErr := session.Run(readCommands[op])
+	_ = session.Close()
+	raw, overflow := output.snapshot()
+	err = classifyCLI(raw, runErr, overflow)
+	// An explicit disabled NTP service is a readiness observation, not an
+	// assertion of synchronized time or an acceptable issuance prerequisite.
+	if op == ReadNTP && runErr == nil && !overflow && strings.TrimSpace(string(raw)) == "%NTP is not enabled." {
+		err = nil
+	}
+	if op == ReadProtocolConfig && runErr == nil && !overflow && len(bytes.TrimSpace(raw)) == 0 {
+		err = nil
+	}
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	e.record("ssh", op, raw, err)
+	if err != nil {
+		return err
 	}
 	return nil
 }

@@ -13,10 +13,11 @@ import (
 )
 
 type fakeCollector struct {
-	der    []byte
-	calls  int
-	denied bool
-	drift  bool
+	der     []byte
+	calls   int
+	denied  bool
+	drift   bool
+	netconf bool
 }
 
 func (f *fakeCollector) Readiness(context.Context, string) (device.Evidence, error) {
@@ -24,6 +25,9 @@ func (f *fakeCollector) Readiness(context.Context, string) (device.Evidence, err
 		return device.Evidence{}, device.ErrPermission
 	}
 	e := device.Evidence{Complete: true, Raw: map[device.Operation][]byte{device.ReadClock: []byte("12:00:00.000 UTC Fri Oct 23 2026\nTime source is NTP\n"), device.ReadNTP: []byte("Clock is synchronized"), device.ReadPrivilege: []byte("Current privilege level is 15"), device.ReadProtocolConfig: []byte("")}}
+	if f.netconf {
+		e.Raw[device.ReadProtocolConfig] = []byte("netconf-yang\n")
+	}
 	for _, op := range []device.Operation{device.ReadClock, device.ReadNTP, device.ReadPrivilege, device.ReadProtocolConfig} {
 		e.Audit = append(e.Audit, device.Event{Transport: "ssh", Operation: op, Outcome: "success"})
 	}
@@ -88,5 +92,14 @@ func TestPrivateEvidenceNeverOverwritesOrEntersCheckout(t *testing.T) {
 	}
 	if _, err = WriteReport("relative", r); err == nil || errors.Is(err, os.ErrNotExist) {
 		t.Fatal("relative evidence location accepted")
+	}
+}
+
+func TestNETCONFIdentityFailureStopsLab(t *testing.T) {
+	_, der, _ := tlsFixture(t)
+	src := &fakeCollector{der: der, netconf: true}
+	r := Run(context.Background(), src, Config{DeviceID: "router-a", Hostname: "router.example.test", NETCONF: func(context.Context) (device.Evidence, error) { return device.Evidence{}, device.ErrHostKey }})
+	if r.Status != "FAIL" || src.calls != 1 || r.Checks["tls-matches"] {
+		t.Fatal("NETCONF identity rejection did not stop lab")
 	}
 }

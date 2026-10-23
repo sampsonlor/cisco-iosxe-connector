@@ -70,7 +70,10 @@ These are design references, not evidence of the live router's schemas or AAA.
 
 ## Constrained CLI supplement
 
-The CLI uses separate SSH exec channels, without a PTY or interactive shell.
+The CLI uses a fresh pinned SSH connection and one exec channel per fixed
+command, without a PTY or interactive shell. A server may end its connection
+after a successful exec; no second channel is assumed. Each command is planned
+once, and a rejection never triggers a retry or alternate credential.
 No `enable`, terminal configuration, enrollment, import, key generation or
 save command is sent. Commands are selected from this fixed set:
 

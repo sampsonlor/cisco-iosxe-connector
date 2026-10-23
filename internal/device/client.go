@@ -73,10 +73,12 @@ type Event struct {
 // Evidence contains bounded raw reads, never deployment authorization or a
 // parsed certificate inventory. The inventory layer must interpret it next.
 type Evidence struct {
-	Complete     bool
-	Raw          map[Operation][]byte
-	Capabilities map[Operation]Capability
-	Audit        []Event
+	Complete       bool
+	Raw            map[Operation][]byte
+	Capabilities   map[Operation]Capability
+	Audit          []Event
+	LocalAddresses map[string]string
+	NETCONFHello   []byte
 }
 type Client struct {
 	targets  map[string]Target
@@ -173,16 +175,19 @@ func (c *Client) Collect(ctx context.Context, id string) (e Evidence, err error)
 		if err != nil {
 			e.Complete = false
 			e.Raw = nil
+			e.NETCONFHello = nil
 		}
 		if ctx.Err() != nil {
 			err = ctx.Err()
 			e.Complete = false
 			e.Raw = nil
+			e.NETCONFHello = nil
 		}
 		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
 			err = context.DeadlineExceeded
 			e.Complete = false
 			e.Raw = nil
+			e.NETCONFHello = nil
 		}
 	}()
 	if t.NETCONF.Port != 0 {
