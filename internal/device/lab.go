@@ -29,7 +29,7 @@ func (c *Client) Readiness(ctx context.Context, id string) (e Evidence, err erro
 			e.Complete = false
 		}
 	}()
-	err = c.readCLIOperations(ctx, t, &e, []Operation{ReadClock, ReadNTP, ReadPrivilege, ReadProtocolConfig})
+	err = c.readCLIOperations(ctx, t, &e, []Operation{ReadClock, ReadNTP, ReadPrivilege, ReadProtocolConfig, ReadHTTPSStatus})
 	e.Complete = err == nil
 	return e, err
 }

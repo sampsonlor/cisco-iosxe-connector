@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/device"
@@ -69,7 +70,14 @@ func run() int {
 	}
 	resolver := sessionResolver{username: *username, password: password, key: key}
 	cli := device.Endpoint{Port: uint16(*sshPort), CredentialRef: "session://lab", HostKeyRef: "hostkey://lab"}
-	client, err := device.NewClient(map[string]device.Target{"router": {Address: ip, CLI: &cli}}, resolver, time.Minute)
+	var observations []lab.ReadObservation
+	var observerMu sync.Mutex
+	observer := device.WithReadObserver(func(op device.Operation, raw []byte, complete, accepted bool) {
+		observerMu.Lock()
+		defer observerMu.Unlock()
+		observations = append(observations, lab.ReadObservation{Operation: op, Data: raw, Complete: complete, Accepted: accepted})
+	})
+	client, err := device.NewClient(map[string]device.Target{"router": {Address: ip, CLI: &cli}}, resolver, time.Minute, observer)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "invalid read-only transport policy")
 		return 2
@@ -83,6 +91,7 @@ func run() int {
 		cfg.NETCONF = func(ctx context.Context) (device.Evidence, error) { return modelClient.Collect(ctx, "router") }
 	}
 	report := lab.Run(context.Background(), client, cfg)
+	report.WireReads = observations
 	report.Target = map[string]string{"address": ip.String(), "hostname": *hostname, "username": *username, "hostKeySHA256": ssh.FingerprintSHA256(key), "authentication": "password dialog; process memory only"}
 	path, err := lab.WriteReport(*directory, report)
 	if err != nil {

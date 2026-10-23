@@ -81,6 +81,7 @@ type Evidence struct {
 	NETCONFHello   []byte
 }
 type Client struct {
+	observer func(Operation, []byte, bool, bool)
 	targets  map[string]Target
 	resolver Resolver
 	timeout  time.Duration
@@ -88,7 +89,23 @@ type Client struct {
 	dial     func(context.Context, string) (net.Conn, error)
 }
 
-func NewClient(targets map[string]Target, resolver Resolver, timeout time.Duration) (*Client, error) {
+// Option configures an operator-owned client, never an Entity request.
+type Option func(*Client) error
+
+// WithReadObserver is for private diagnostic evidence only. Callbacks receive
+// copies of bounded operational replies, never authentication material.
+// The callback must be concurrency-safe if the client is used concurrently.
+func WithReadObserver(observer func(Operation, []byte, bool, bool)) Option {
+	return func(c *Client) error {
+		if observer == nil {
+			return ErrPolicy
+		}
+		c.observer = observer
+		return nil
+	}
+}
+
+func NewClient(targets map[string]Target, resolver Resolver, timeout time.Duration, options ...Option) (*Client, error) {
 	if resolver == nil || len(targets) == 0 {
 		return nil, ErrPolicy
 	}
@@ -121,9 +138,18 @@ func NewClient(targets map[string]Target, resolver Resolver, timeout time.Durati
 		out[id] = t
 	}
 	dialer := &net.Dialer{}
-	return &Client{targets: out, resolver: resolver, timeout: timeout, limit: 4 << 20, dial: func(ctx context.Context, address string) (net.Conn, error) {
+	c := &Client{targets: out, resolver: resolver, timeout: timeout, limit: 4 << 20, dial: func(ctx context.Context, address string) (net.Conn, error) {
 		return dialer.DialContext(ctx, "tcp", address)
-	}}, nil
+	}}
+	for _, option := range options {
+		if option == nil {
+			return nil, ErrPolicy
+		}
+		if err := option(c); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
 }
 
 var deviceID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)

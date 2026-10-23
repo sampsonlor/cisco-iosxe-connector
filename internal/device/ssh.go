@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -150,6 +151,9 @@ func (c *Client) readCLICommand(ctx context.Context, t Target, e *Evidence, op O
 		err = ctx.Err()
 	}
 	e.record("ssh", op, raw, err)
+	if c.observer != nil {
+		c.observer(op, slices.Clone(raw), runErr == nil && !overflow, err == nil)
+	}
 	if err != nil {
 		return err
 	}

@@ -44,13 +44,15 @@ pin acceptance or alternate account/port selection.
 ## Reads and independent verification
 
 The existing five inventory commands from #4 remain unchanged. A separate
-readiness method sends only these four fixed commands through SSH exec:
+readiness method sends only these fixed commands through SSH exec, including
+an early HTTPS status observation for diagnosing incomplete inventory:
 
 ```text
 show clock detail
 show ntp status
 show privilege
 show running-config | include ^netconf|^restconf
+show ip http server status
 ```
 
 Each fixed command uses its own pinned SSH connection; servers that end the
@@ -60,6 +62,10 @@ setting, key generation, CSR, import, activation or save operation. Empty
 output from the protocol configuration filter is a valid absence of explicit
 configuration, not a valid empty certificate inventory. Readiness permission
 failure stops collection; no identity escalation or automatic retry occurs.
+
+The NTP-disabled notice and `No time source` are retained as explicit readiness
+observations. Recording a clock is distinct from proving time synchronization;
+an unsynchronized clock cannot satisfy a later issuance/staging prerequisite.
 
 The tool captures readiness, reads the inventory, makes an independent TLS
 handshake, and then repeats the inventory and TLS read. It compares the active
@@ -83,6 +89,12 @@ The private report contains raw public certificate evidence, operational
 outputs, model hello when collected, source addresses, fixed-operation audit
 events and public fingerprints. Treat the whole report as private operational
 data. Publish only a sanitized summary and a private evidence reference.
+
+The lab entry point opts into bounded copies of CLI replies for private
+diagnostics, including a failed certificate read. `WireReads.Complete` means
+exec finished; `Accepted` records the transport's validation decision. Neither
+field is a healthy inventory claim. Default collector failures still discard
+`Evidence.Raw`; diagnostic replies never feed the Provider's InventoryReader.
 
 `PASS` requires every recorded gate. Technical observations can succeed while
 overall status remains `INCOMPLETE`, especially when NETCONF models are not

@@ -26,6 +26,7 @@ type Config struct {
 	NETCONF                        func(context.Context) (device.Evidence, error)
 }
 type Report struct {
+	WireReads                         []ReadObservation
 	Target                            map[string]string
 	Started, Finished                 time.Time
 	Status                            string
@@ -35,9 +36,28 @@ type Report struct {
 	TLSBefore, TLSAfter               TLSResult
 }
 
+// WireReads are private diagnostics, never a parsed/healthy inventory. Complete
+// means exec finished; Accepted means transport checks accepted the response.
+type ReadObservation struct {
+	Operation          device.Operation
+	Data               []byte
+	Complete, Accepted bool
+}
+
 func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 	r = Report{Started: time.Now().UTC(), Status: "INCOMPLETE", Checks: map[string]bool{}}
-	defer func() { r.Finished = time.Now().UTC() }()
+	defer func() {
+		total := 0
+		valid := true
+		for _, e := range []device.Evidence{r.Readiness, r.Before, r.After, r.NETCONF} {
+			if len(e.Audit) > 0 {
+				total += len(e.Audit)
+				valid = valid && readOnlyAudit(e.Audit)
+			}
+		}
+		r.Checks["no-mutation-requests"] = total > 0 && valid
+		r.Finished = time.Now().UTC()
+	}()
 	var err error
 	r.Readiness, err = c.Readiness(ctx, cfg.DeviceID)
 	if err != nil || !r.Readiness.Complete {
@@ -45,7 +65,9 @@ func Run(ctx context.Context, c Collector, cfg Config) (r Report) {
 		r.Notes = append(r.Notes, "readiness: "+safeError(err))
 		return r
 	}
-	r.Checks["clock-recorded"] = regexp.MustCompile(`(?m)[*. ]?[0-9]{2}:[0-9]{2}:[0-9]{2}`).Match(r.Readiness.Raw[device.ReadClock]) && strings.Contains(string(r.Readiness.Raw[device.ReadClock]), "Time source is")
+	clock := string(r.Readiness.Raw[device.ReadClock])
+	r.Checks["clock-recorded"] = regexp.MustCompile(`(?m)[*. ]?[0-9]{2}:[0-9]{2}:[0-9]{2}`).MatchString(clock) && (strings.Contains(clock, "Time source is") || strings.Contains(clock, "No time source"))
+	r.Checks["time-synchronized"] = strings.Contains(string(r.Readiness.Raw[device.ReadNTP]), "Clock is synchronized")
 	r.Notes = append(r.Notes, "Account write restrictions require separate operator/AAA policy evidence; no mutating permission test was attempted.")
 	r.Checks["restricted-identity"] = false
 	r.Before, err = c.Collect(ctx, cfg.DeviceID)
