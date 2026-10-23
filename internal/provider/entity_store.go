@@ -46,7 +46,7 @@ func OpenEntityStore(path string) (*EntityStore, error) {
 	}
 	u := url.URL{Scheme: "file", Path: p}
 	q := url.Values{}
-	for _, pragma := range []string{"journal_mode(WAL)", "synchronous(FULL)", "busy_timeout(3000)", "foreign_keys(ON)"} {
+	for _, pragma := range []string{"synchronous(FULL)", "busy_timeout(3000)", "foreign_keys(ON)"} {
 		q.Add("_pragma", pragma)
 	}
 	u.RawQuery = q.Encode()
@@ -65,14 +65,7 @@ func OpenEntityStore(path string) (*EntityStore, error) {
 func (s *EntityStore) Close() error { return s.db.Close() }
 func (s *EntityStore) initialize() error {
 	ctx := context.Background()
-	var mode string
-	var sync, app, version int
-	if err := s.db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
-		return errors.New("entity database unreadable")
-	}
-	if err := s.db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&sync); err != nil || mode != "wal" || sync != 2 {
-		return errors.New("entity database durability settings unavailable")
-	}
+	var app, version int
 	if err := s.db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app); err != nil {
 		return err
 	}
@@ -81,13 +74,13 @@ func (s *EntityStore) initialize() error {
 	}
 	const applicationID = 0x49584543
 	if app == applicationID && version == 1 {
-		return nil
+		return s.enableDurability(ctx)
 	}
 	if app != 0 || version != 0 {
 		return errors.New("unsupported entity database schema")
 	}
 	var tables int
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table'").Scan(&tables); err != nil || tables != 0 {
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil || tables != 0 {
 		return errors.New("entity database is not empty")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -103,7 +96,24 @@ func (s *EntityStore) initialize() error {
 			return errors.New("entity schema initialization failed")
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.enableDurability(ctx)
+}
+
+// journal_mode persists in the database header. Change it only after proving
+// ownership, so a rejected database from another application remains intact.
+func (s *EntityStore) enableDurability(ctx context.Context) error {
+	var mode string
+	var sync int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA journal_mode=WAL").Scan(&mode); err != nil || mode != "wal" {
+		return errors.New("entity database WAL unavailable")
+	}
+	if err := s.db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&sync); err != nil || sync != 2 {
+		return errors.New("entity database FULL sync unavailable")
+	}
+	return nil
 }
 func (s *EntityStore) get(ctx context.Context, id string) (entityRecord, error) {
 	var r entityRecord

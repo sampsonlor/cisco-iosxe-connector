@@ -56,7 +56,9 @@ management address. The pure-Go driver is pinned to `modernc.org/sqlite`
 v1.61.0; its libc dependency remains the version selected by that module.
 Startup verifies the durability settings and refuses unsupported schema
 versions, foreign databases and unreadable/corrupt files. It never silently
-resets the database. This store is separate from the future operation journal:
+resets the database. Ownership is checked before enabling WAL; a regression
+test compares a rejected foreign database byte for byte before/after opening.
+This store is separate from the future operation journal:
 it does not implement device intent, service locks or crash recovery of writes.
 
 The caller supplies an absolute local database path. Newly created directories
