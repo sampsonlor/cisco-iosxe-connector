@@ -29,6 +29,8 @@ const nativeNS = "http://cisco.com/ns/yang/Cisco-IOS-XE-native"
 const httpNS = "http://cisco.com/ns/yang/Cisco-IOS-XE-http"
 
 type fixture struct {
+	csrShell        func(ssh.Channel)
+	commandOutput   func(string) string
 	signer          ssh.Signer
 	listener        net.Listener
 	wg              sync.WaitGroup
@@ -125,6 +127,15 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 						defer ch.Close()
 						for req := range requests {
 							switch req.Type {
+							case "pty-req":
+								_ = req.Reply(f.csrShell != nil, nil)
+							case "shell":
+								f.record("shell")
+								_ = req.Reply(f.csrShell != nil, nil)
+								if f.csrShell != nil {
+									f.csrShell(ch)
+								}
+								return
 							case "subsystem":
 								var m struct{ Name string }
 								_ = ssh.Unmarshal(req.Payload, &m)
@@ -145,6 +156,9 @@ func startFixture(t *testing.T, f *fixture) *fixture {
 								f.record("exec:" + m.Command)
 								_ = req.Reply(true, nil)
 								out := f.cliOutput
+								if f.commandOutput != nil {
+									out = f.commandOutput(m.Command)
+								}
 								if value, ok := f.commandOutputs[m.Command]; ok {
 									out = value
 								}
