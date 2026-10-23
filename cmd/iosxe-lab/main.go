@@ -84,7 +84,7 @@ func run() int {
 	}
 	cfg := lab.Config{DeviceID: "router", Hostname: *hostname, TLSAddress: net.JoinHostPort(ip.String(), strconv.FormatUint(uint64(*httpsPort), 10))}
 	if *netconfPort != 0 {
-		modelClient, err := device.NewClient(map[string]device.Target{"router": {Address: ip, NETCONF: device.Endpoint{Port: uint16(*netconfPort), CredentialRef: cli.CredentialRef, HostKeyRef: cli.HostKeyRef}}}, resolver, time.Minute)
+		modelClient, err := device.NewClient(map[string]device.Target{"router": {Address: ip, CLI: &cli, NETCONF: device.Endpoint{Port: uint16(*netconfPort), CredentialRef: cli.CredentialRef, HostKeyRef: cli.HostKeyRef}}}, resolver, time.Minute, observer)
 		if err != nil {
 			return 2
 		}
