@@ -367,6 +367,9 @@ func TestDNSViewPermissionsScopeAndCancellation(t *testing.T) {
 		if err := f.p.Present(ctx, c); !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
+		// A canceled wire call preserves its intent. The workflow uses a fresh
+		// bounded context to clean it, including when Present never returned.
+		must(t, f.p.Cleanup(context.Background(), c))
 		owner, marker := journal.DNSNames(c.Identifier)
 		if len(f.wire.records[owner]) != 0 || len(f.wire.records[marker]) != 0 {
 			t.Fatal("cancellation left owned records")
