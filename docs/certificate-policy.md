@@ -137,8 +137,9 @@ Same-leaf retries preserve the revision; changing the bound leaf is rejected.
 
 The old digest-only `CertificateReady` entry point is retained solely for the
 journal foundation harness and rejects any operation with a recorded CSR. The
-runtime certificate gate requires recorded artifacts. Schema v2 remains in use;
-only the accepted digest/state/history are persisted, not a reusable permission
+runtime certificate gate requires recorded artifacts. The ACME component extends
+the journal to [schema v3](acme-external-csr.md) while preserving these artifacts;
+the certificate gate persists only the accepted digest/state/history, not a reusable permission
 grant or receipt. Every `Accept` retry, including after reopening SQLite, checks
 time and evidence again. Failure leaves service ownership and state intact.
 

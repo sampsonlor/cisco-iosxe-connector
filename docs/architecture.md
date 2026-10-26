@@ -10,8 +10,9 @@ in `internal/journal` and `internal/lifecycle`. [Device CSR components](device-c
 include the opt-in SSH adapter and public validation, with private write acceptance
 still pending. [Certificate acceptance](certificate-policy.md) validates recorded
 CSR, identity/purpose/time, pinned chain and trusted template/permission evidence
-before CERT_READY. Actual import, issuance, activation and an authenticated host
-remain planned.
+before CERT_READY. The [ACME library](acme-external-csr.md) reuses the saved CSR
+and original order with bounded protocol/recovery tests. Real DNS, private
+issuance acceptance, import, activation and an authenticated host remain planned.
 Names and network details below are synthetic.
 
 ```mermaid

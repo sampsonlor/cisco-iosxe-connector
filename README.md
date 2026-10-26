@@ -7,7 +7,8 @@ Cisco IOS XE. Initial target: the HTTPS service on Cisco C8000V, with OmniTrust
 ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
 **Status: read-only Provider, SQLite metadata/journal, NETCONF/SSH reads,
-certificate inventory, opt-in CSR library and certificate validation. There is
+certificate inventory, opt-in CSR library, certificate validation and resumable
+external-CSR ACME library. There is
 no deployable renewal service yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
@@ -46,13 +47,13 @@ models and ILM Core integration still require their own live evidence.
 The [operation journal and shared import gate](docs/durable-journal.md) implement
 durable service ownership, request/operation correlation and commit-before-dispatch
 with SQLite WAL. Counting-importer tests cover concurrency, storage failure and
-crash recovery of intent. Signing, inactive import and activation are future
-milestones; the read-only HTTP Provider does not enable writes.
+crash recovery of intent. Live acceptance, inactive import and activation are
+future milestones; the read-only HTTP Provider does not enable writes.
 
 [Device CSR components](docs/device-csr.md) now provide a separate opt-in,
 pinned SSH adapter, public CSR/key validation and durable generation intent.
 Offline SSH/SQLite tests cover this path; actual target write acceptance remains
-private. HTTP lifecycle wiring, signing, inactive import and activation follow
+private. HTTP lifecycle wiring, inactive import and activation follow
 their own milestones.
 
 [Certificate acceptance policy](docs/certificate-policy.md) now validates saved
@@ -60,6 +61,12 @@ CSRs, identity/purpose/time, pinned CA paths and AD CS template/enrollment evide
 before durable CERT_READY. Its private evidence source remains a trusted host
 dependency; offline snapshots do not prove live AD permissions. Import and
 activation require their own device and policy rechecks.
+
+The [external-CSR ACME workflow](docs/acme-external-csr.md) adds account/order
+association, bounded retries and recovery through the original order. Synthetic
+HTTPS tests verify real JWS and exact CSR bytes; the real restricted DNS backend
+follows #11. This library does not expose live issuance or device deployment
+through the HTTP Provider or a new executable.
 
 ## Local checks
 
@@ -76,8 +83,8 @@ go test -race -count=1 ./...
 
 The Go tests exercise the official SDK, connector boundary and read-only
 Provider through in-process HTTP, real temporary SQLite files and synthetic
-inventory readers. They never connect to a router, CA, DNS service or ILM
-instance. They do not implement certificate issuance or device configuration.
+inventory readers, plus loopback HTTPS ACME servers. They never contact a real
+router, CA, DNS service or ILM instance; all signing/keys are synthetic test data.
 Planned acceptance cases remain explicitly `planned` in the catalog; they
 are not represented by skipped or empty passing tests.
 

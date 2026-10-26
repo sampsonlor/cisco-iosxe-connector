@@ -3,13 +3,16 @@
 `internal/journal` persists operation correlation, state transitions and HTTPS
 service ownership in a dedicated SQLite database. `internal/lifecycle.ImportGate`
 is the shared internal API/worker import entry point. The import gate uses a
-counting test adapter; real import, issuance, scheduling and HTTP lifecycle
+counting test adapter; real import, private issuance acceptance, scheduling and HTTP lifecycle
 wiring remain later milestones. The read-only Provider returns 501 for mutations.
 The subsequent [CSR component](device-csr.md) adds schema v2 public CSR artifacts,
 atomic generation intent/result recording and an opt-in SSH adapter; the import
-adapter and signing/activation paths remain future work.
+adapter and activation paths remain future work.
 The [certificate gate](certificate-policy.md) now binds a validated leaf to the
 recorded CSR and approved issuance policy before CERT_READY.
+The [external-CSR ACME workflow](acme-external-csr.md) adds schema v3 public
+account/order association, separate CAS progress and retry timestamps. It keeps
+the original CSR and order across timeouts/restarts; live DNS remains #11.
 
 ## Ownership and correlation
 

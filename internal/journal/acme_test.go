@@ -3,6 +3,7 @@ package journal
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,28 @@ func TestACMEJournalRejectsUnownedMissingCSRAndUnsafeResources(t *testing.T) {
 	r := begin(t, s)
 	if _, _, _, _, err := s.BeginACME(context.Background(), r.Ref(), acmeBinding()); err == nil {
 		t.Fatal("native Core owner accepted by ACME")
+	}
+	p := approved()
+	p.Owner = ACMEWorker
+	bare, err := Open(filepath.Join(t.TempDir(), "bare.sqlite"), []Service{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bare.Close()
+	c := correlation()
+	c.Binding = p.Binding
+	missing, err := bare.Begin(context.Background(), uuid.NewString(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []State{KeyCreating, CSRReady} {
+		missing, err = bare.Progress(context.Background(), missing.Ref(), missing.Revision, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, _, _, err := bare.BeginACME(context.Background(), missing.Ref(), acmeBinding()); !errors.Is(err, ErrState) {
+		t.Fatal("missing recorded CSR accepted", err)
 	}
 	s2, _, _, r2, _ := acmeOperation(t)
 	defer s2.Close()

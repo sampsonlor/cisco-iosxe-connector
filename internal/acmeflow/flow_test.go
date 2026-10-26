@@ -53,6 +53,13 @@ func (f testEvidence) Read(c context.Context, r string) (certpolicy.EnrollmentEv
 }
 
 type fixture struct {
+	expiredOrder                                                                                bool
+	loseAccount                                                                                 bool
+	certRateLimits                                                                              int
+	redirectDirectory                                                                           bool
+	finalizeProcessing                                                                          bool
+	zeroPollDelay                                                                               bool
+	validator                                                                                   *certpolicy.Validator
 	t                                                                                           *testing.T
 	mu                                                                                          sync.Mutex
 	now                                                                                         time.Time
@@ -156,6 +163,7 @@ func newFixture(t *testing.T) *fixture {
 	f.ref = r.Ref()
 	f.gate, err = lifecycle.NewCertificateGate(f.store, validator)
 	must(t, err)
+	f.validator = validator
 	f.server = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	f.config = Config{DirectoryURL: f.url("/directory"), AccountKeyRef: "secret://acme/test", TLSBundleRef: "bundle://acme/test", PolicySHA256: validator.Digest(), MinBackoff: time.Second, MaxBackoff: 8 * time.Second, RunTimeout: time.Second, MaxAttempts: 16, MaxRequests: 64, NonceRetries: 2, Now: f.Now}
 	f.engine, err = New(f.config, f.store, f.gate, f.accountKey, f, f.server.Client())
@@ -171,6 +179,9 @@ func (f *fixture) order() map[string]any {
 		auth = append(auth, f.url(fmt.Sprintf("/authz/%d", i)))
 	}
 	o := map[string]any{"status": f.orderStatus, "expires": f.now.Add(time.Hour), "identifiers": ids, "authorizations": auth, "finalize": f.url("/order/one/finalize")}
+	if f.expiredOrder {
+		o["expires"] = f.now.Add(-time.Minute)
+	}
 	if f.orderStatus == "valid" {
 		o["certificate"] = f.url("/cert/one")
 	}
@@ -246,6 +257,10 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 		respond(code, map[string]string{"type": "urn:ietf:params:acme:error:" + typ, "detail": "synthetic private diagnostic"})
 	}
 	if r.Method == http.MethodGet && r.URL.Path == profilePath+"/directory" {
+		if f.redirectDirectory {
+			http.Redirect(w, r, f.server.URL+"/other-profile/directory", http.StatusTemporaryRedirect)
+			return
+		}
 		order := f.url("/new-order")
 		if f.foreignDirectory {
 			order = f.server.URL + "/other-profile/new-order"
@@ -285,6 +300,14 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 			code = 201
 		}
 		w.Header().Set("Location", f.url("/acct/a"))
+		if f.loseAccount && code == 201 {
+			f.loseAccount = false
+			c, _, e := w.(http.Hijacker).Hijack()
+			if e == nil {
+				c.Close()
+			}
+			return
+		}
 		respond(code, map[string]any{"status": "valid", "orders": f.url("/acct/a/orders")})
 	case r.URL.Path == profilePath+"/new-order":
 		if f.badNonce > 0 {
@@ -377,6 +400,9 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.orderStatus = "valid"
+		if f.finalizeProcessing {
+			f.orderStatus = "processing"
+		}
 		if f.loseFinalize {
 			f.loseFinalize = false
 			c, _, e := w.(http.Hijacker).Hijack()
@@ -393,8 +419,17 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Location", f.url("/order/one"))
+		if f.zeroPollDelay {
+			w.Header().Set("Retry-After", "0")
+		}
 		respond(200, f.order())
 	case r.URL.Path == profilePath+"/cert/one":
+		if f.certRateLimits > 0 {
+			f.certRateLimits--
+			w.Header().Set("Retry-After", "1")
+			problem(429, "rateLimited")
+			return
+		}
 		if len(payload) != 0 || len(f.leaf) == 0 {
 			problem(400, "malformed")
 			return
@@ -462,7 +497,7 @@ func TestFinalizeResponseLossRecoversOriginalOrderAfterRestart(t *testing.T) {
 	f.store, err = journal.Open(f.path, f.services)
 	must(t, err)
 	// The gate is rebound to the reopened Store while retaining the same policy.
-	f.gate, err = f.gate.WithJournal(f.store)
+	f.gate, err = lifecycle.NewCertificateGate(f.store, f.validator)
 	must(t, err)
 	f.engine, err = New(f.config, f.store, f.gate, f.accountKey, f, f.server.Client())
 	must(t, err)

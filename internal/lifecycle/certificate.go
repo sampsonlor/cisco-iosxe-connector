@@ -12,6 +12,13 @@ type CertificateGate struct {
 	validator *certpolicy.Validator
 }
 
+func (g *CertificateGate) PolicySHA256() string {
+	if g == nil || g.validator == nil {
+		return ""
+	}
+	return g.validator.Digest()
+}
+
 func NewCertificateGate(store *journal.Store, validator *certpolicy.Validator) (*CertificateGate, error) {
 	if store == nil || validator == nil {
 		return nil, journal.ErrStore
