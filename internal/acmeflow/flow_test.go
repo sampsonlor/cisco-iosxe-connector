@@ -142,12 +142,15 @@ func newFixture(t *testing.T) *fixture {
 	f.material = csr.Result{DER: request, PublicKeyDER: pub, NonExportable: true}
 	p := certpolicy.Policy{ID: "https-policy", Spec: f.spec, RAProfileID: "ra-a", AuthorityID: "authority-a", PrincipalRef: "principal://test/issuer", EvidenceRef: "evidence://test/template", BundleRef: "bundle://test/ca", Roots: [][]byte{der}, IssuerSHA256: []string{certpolicy.SHA256(der)}, Template: certpolicy.Template{Kind: certpolicy.V1, Name: "TechnicalWeb"}, KeyUsage: x509.KeyUsageDigitalSignature, MinRemaining: time.Hour, MaxLifetime: 3 * 365 * 24 * time.Hour, MaxBackdate: 24 * time.Hour, MaxClockAge: time.Minute, MaxClockError: time.Second, MaxEvidenceAge: time.Hour}
 	var validator *certpolicy.Validator
+	// Model a permission snapshot collected before validation. Sampling its
+	// timestamp after a zero-uncertainty clock read makes it future evidence
+	// on platforms with finer clock resolution, and must remain rejected.
+	snapshotAt := time.Now().UTC()
 	validator, err = certpolicy.New(p, testClock(func(context.Context) (certpolicy.TimeReading, error) {
 		n := time.Now().UTC()
 		return certpolicy.TimeReading{Now: n, ObservedAt: n, Synchronized: true}, nil
 	}), testEvidence(func(_ context.Context, r string) (certpolicy.EnrollmentEvidence, error) {
-		n := time.Now().UTC()
-		return certpolicy.EnrollmentEvidence{Reference: r, SnapshotSHA256: strings.Repeat("d", 64), PolicySHA256: validator.Digest(), RAProfileID: p.RAProfileID, AuthorityID: p.AuthorityID, PrincipalRef: p.PrincipalRef, IssuerSHA256: p.IssuerSHA256[0], Template: p.Template, ObservedAt: n, ValidUntil: n.Add(time.Hour), RABindingVerified: true, Published: true, CAReadTemplate: true, CARequestCertificates: true, TemplateRead: true, TemplateEnroll: true, SubjectSupplyAllowed: true, SANSupplyAllowed: true}, nil
+		return certpolicy.EnrollmentEvidence{Reference: r, SnapshotSHA256: strings.Repeat("d", 64), PolicySHA256: validator.Digest(), RAProfileID: p.RAProfileID, AuthorityID: p.AuthorityID, PrincipalRef: p.PrincipalRef, IssuerSHA256: p.IssuerSHA256[0], Template: p.Template, ObservedAt: snapshotAt, ValidUntil: snapshotAt.Add(time.Hour), RABindingVerified: true, Published: true, CAReadTemplate: true, CARequestCertificates: true, TemplateRead: true, TemplateEnroll: true, SubjectSupplyAllowed: true, SANSupplyAllowed: true}, nil
 	}))
 	must(t, err)
 	entity := uuid.NewString()
