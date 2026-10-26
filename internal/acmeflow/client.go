@@ -31,6 +31,7 @@ var (
 	ErrPending   = errors.New("ACME operation deferred until its recorded retry time")
 	ErrReconcile = errors.New("ACME outcome requires original-order reconciliation")
 	ErrExhausted = errors.New("ACME attempt or request budget exhausted")
+	ErrCanceled  = errors.New("ACME operation cancelled")
 )
 
 type Config struct {
@@ -47,7 +48,7 @@ type Challenge struct {
 // The backend must durably own/idempotently ensure and clean exactly this
 // operation's value. A failed Present can be ambiguous; Cleanup must also work
 // from the operation/authorization/hash references without raw token material.
-// The real restricted DNS backend is backlog #11, not an implicit system tool.
+// internal/dns01 supplies a restricted AD DNS implementation to a trusted host.
 type Solver interface {
 	Present(context.Context, Challenge) error
 	Cleanup(context.Context, Challenge) error

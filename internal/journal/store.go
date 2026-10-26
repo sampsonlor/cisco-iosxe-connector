@@ -27,6 +27,8 @@ type Store struct {
 	closed   bool
 	acmeMu   sync.Mutex
 	acmeJobs map[string]bool
+	dnsMu    sync.Mutex
+	dnsJobs  map[string]bool
 }
 
 func Open(path string, services []Service) (*Store, error) {
@@ -126,7 +128,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return ErrStore
 	}
-	if app != applicationID || (version != 1 && version != 2 && version != 3) {
+	if app != applicationID || (version != 1 && version != 2 && version != 3 && version != 4) {
 		if app != 0 || version != 0 {
 			return ErrStore
 		}
@@ -181,6 +183,20 @@ func (s *Store) initialize() error {
 		}); err != nil {
 			return err
 		}
+		version = 3
+	}
+	if version == 3 {
+		if err := s.transaction(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, "CREATE TABLE dns_claims (claim_id TEXT PRIMARY KEY, operation_id TEXT NOT NULL REFERENCES operations(id), revision INTEGER NOT NULL CHECK(revision>0), state TEXT NOT NULL, record TEXT NOT NULL)"); err != nil {
+				return ErrStore
+			}
+			if _, err := tx.ExecContext(ctx, "PRAGMA user_version=4"); err != nil {
+				return ErrStore
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 	var mode, integrity string
 	var syncMode int
@@ -207,6 +223,9 @@ func (s *Store) initialize() error {
 		return err
 	}
 	if err := s.checkACMEStorage(ctx); err != nil {
+		return err
+	}
+	if err := s.checkDNSStorage(ctx); err != nil {
 		return err
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {

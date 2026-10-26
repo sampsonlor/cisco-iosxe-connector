@@ -3,7 +3,9 @@
 `internal/acmeflow.Engine` uses the original device CSR already stored by the
 journal, signs ACME requests with a separate host-supplied account signer and
 passes the issued leaf/chain through the shared certificate-policy gate. A
-successful attempt ends at CERT_READY. DNS credentials, actual router import,
+successful attempt ends at CERT_READY. A [native AD DNS solver](ad-dns01.md)
+now provides restricted GSS-TSIG updates and exact cleanup; its credential source
+is supplied by the trusted host. Credential host wiring, actual router import,
 scheduling and an authenticated executable host remain separate milestones.
 The HTTP Provider continues to return 501 for CSR/push.
 
@@ -42,7 +44,7 @@ they are not Core attributes or new ILM API fields.
 | TLS bundle reference/client | Reviewed server trust, hostname checks and TLS 1.2+; no verification bypass |
 | Policy SHA-256 | Same digest as the journal's service and certificate gate |
 | Terms URL | Explicit reviewed value if the server presents terms; no blanket acceptance |
-| Solver | Trusted idempotent DNS-01 presentation/cleanup backend; real provider is #11 |
+| Solver | Trusted idempotent DNS-01 presentation/cleanup backend; `internal/dns01` provides native AD DNS |
 | Limits/clock | Explicit per-run timeout, HTTP/nonce/attempt budgets and backoff; current UTC for resumption |
 
 Account key bytes are never generated or stored here. The constructor freezes
@@ -90,8 +92,15 @@ references, including an uncertain Present. Successful presentation and challeng
 notification are recorded separately. Authorization success or known terminal
 expiry/invalidity invokes cleanup only for recorded challenge intents; successful
 cleanup is recorded. A failed cleanup remains retryable and retains ownership.
-Actual TXT mutation, precise concurrent-value cleanup and credential scope are
-still A-005 / #11 acceptance, not claimed by the in-memory test solver.
+The separate AD DNS backend implements TXT mutation and concurrent-value
+ownership; see [its packet/SQLite tests and private acceptance scope](ad-dns01.md).
+
+Caller cancellation persists a monotonic `CancelRequested` intent before cleanup
+with a fresh bounded context. A later run of that operation retries only cleanup
+and returns `ErrCanceled`, including after restart or an earlier cleanup denial.
+It does not resume issuance or create another order. Child network timeouts are
+resumable and retain their original challenge intents instead. Cancellation does
+not imply that an already submitted request was revoked at the CA.
 
 Journal schema v3 adds `acme_accounts` and `acme_operations`, with foreign keys,
 canonical bounded records and a separate CAS revision. Migration from v1/v2
@@ -107,7 +116,7 @@ It remains private operational data on the protected local journal volume.
 sequenceDiagram
     participant Host as Future host / worker
     participant E as ACME engine
-    participant DB as SQLite v3
+    participant DB as SQLite v4
     participant CA as ILM ACME
     participant DNS as Trusted DNS backend
     participant V as Certificate gate
@@ -185,7 +194,7 @@ concurrency, unauthorized identities, foreign endpoints, TLS bypass and redirect
 An expired order cleans only the test backend's recorded intents. Tests generate
 all keys/certificates at runtime and never contact a real ILM, CA, AD, DNS or router.
 
-Next is #11: implement the restricted DNS-01 backend with exact owned TXT cleanup.
+The restricted [AD DNS-01 backend](ad-dns01.md) supplies exact owned TXT cleanup.
 Actual ILM/account/Directory/RA-template acceptance, time synchronization and
 device staging remain private #15; real inactive import remains #12. No public
 workflow obtains internal credentials or network access from these offline tests.

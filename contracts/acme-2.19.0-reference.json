@@ -38,7 +38,8 @@
   "observations": [
     "ILM exposes Directory, newNonce, newAccount, newOrder, authorization, challenge, order, finalize and certificate resources through its ACME Profile path.",
     "The reviewed Directory metadata sets externalAccountRequired=false. Account binding and identifier authorization remain necessary.",
-    "The reviewed ILM challenge types are dns-01 and http-01; this connector implements only the DNS-01 backend interface at this milestone.",
+    "The reviewed ILM challenge types are dns-01 and http-01; this connector implements the DNS-01 interface and a native AD DNS backend, with actual environment acceptance separate.",
+    "validateDnsChallenge calls Attribute.get() once per TXT attribute rather than enumerating its values. Multi-TXT validation remains K-002; the backend defaults to single-TXT mode with a separate ownership-marker name.",
     "Finalize parses the base64url external CSR and transitions the original order to processing before issuing through the RA/Authority.",
     "The client library combines finalization, polling and download. Persistent intents and bounded HTTP/context guards wrap that combined call.",
     "Account lookup uses onlyReturnExisting and the same supplied signing key. Unknown new-order responses cannot be safely matched by identifier lists alone."

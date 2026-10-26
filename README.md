@@ -8,7 +8,7 @@ ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
 **Status: read-only Provider, SQLite metadata/journal, NETCONF/SSH reads,
 certificate inventory, opt-in CSR library, certificate validation and resumable
-external-CSR ACME library. There is
+external-CSR ACME and restricted AD DNS-01 libraries. There is
 no deployable renewal service yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
@@ -64,8 +64,11 @@ activation require their own device and policy rechecks.
 
 The [external-CSR ACME workflow](docs/acme-external-csr.md) adds account/order
 association, bounded retries and recovery through the original order. Synthetic
-HTTPS tests verify real JWS and exact CSR bytes; the real restricted DNS backend
-follows #11. This library does not expose live issuance or device deployment
+HTTPS tests verify real JWS and exact CSR bytes. The
+[Microsoft AD DNS backend](docs/ad-dns01.md) adds Kerberos/GSS-TSIG updates,
+SQLite v4 ownership, exact TXT cleanup and cancellation recovery. ILM 2.19.0
+defaults to single-TXT validation mode; concurrent-value validation requires
+private evidence. These libraries do not expose live issuance or device deployment
 through the HTTP Provider or a new executable.
 
 ## Local checks
@@ -83,7 +86,7 @@ go test -race -count=1 ./...
 
 The Go tests exercise the official SDK, connector boundary and read-only
 Provider through in-process HTTP, real temporary SQLite files and synthetic
-inventory readers, plus loopback HTTPS ACME servers. They never contact a real
+inventory readers, plus loopback HTTPS ACME and TCP DNS servers. They never contact a real
 router, CA, DNS service or ILM instance; all signing/keys are synthetic test data.
 Planned acceptance cases remain explicitly `planned` in the catalog; they
 are not represented by skipped or empty passing tests.

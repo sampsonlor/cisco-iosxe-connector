@@ -88,6 +88,12 @@ func (e *Engine) Run(ctx context.Context, ref journal.Ref) (journal.Record, erro
 	if keyErr != nil || !bytes.Equal(currentKey, e.publicDER) || op.Correlation.PolicySHA256 != e.config.PolicySHA256 || bytes.Equal(e.publicDER, material.PublicKeyDER) {
 		return op, ErrPolicy
 	}
+	r := &run{e: e, ctx: ctx, ref: ref, spec: spec, material: material, flow: flow}
+	if flow.CancelRequested {
+		cleanup, stop := context.WithTimeout(ctx, e.config.RunTimeout)
+		defer stop()
+		return op, r.cancel(cleanup)
+	}
 	if flow.Stage == journal.ACMEInvalid {
 		return op, ErrProtocol
 	}
@@ -101,14 +107,43 @@ func (e *Engine) Run(ctx context.Context, ref journal.Ref) (journal.Record, erro
 		return op, ErrPending
 	}
 	client, g := e.client()
-	r := &run{e: e, ctx: ctx, ref: ref, spec: spec, material: material, flow: flow, client: client, guard: g}
+	r.client, r.guard = client, g
 	network, cancel := context.WithTimeout(ctx, e.config.RunTimeout)
 	defer cancel()
 	err = r.advance(network)
+	if ctx.Err() != nil {
+		// Caller cancellation is an explicit stop. A child network timeout is
+		// resumable instead, and retains any DNS intent for the same challenge.
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), e.config.RunTimeout)
+		defer stop()
+		r.ctx = cleanup
+		// A canceled save can have an uncertain commit outcome. Reload the
+		// actual revision before recording cancellation or dispatching cleanup.
+		current, readErr := e.store.ACMEStatus(cleanup, ref)
+		if readErr != nil {
+			err = errors.Join(ctx.Err(), readErr)
+		} else {
+			r.flow = current
+			err = errors.Join(ctx.Err(), r.cancel(cleanup))
+		}
+	}
 	if current, readErr := e.store.Get(ctx, ref); readErr == nil {
 		op = current
 	}
 	return op, err
+}
+
+func (r *run) cancel(ctx context.Context) error {
+	if !r.flow.CancelRequested {
+		r.flow.CancelRequested = true
+		if err := r.save(); err != nil {
+			return err
+		}
+	}
+	if err := r.cleanup(ctx); err != nil {
+		return errors.Join(ErrCanceled, err)
+	}
+	return ErrCanceled
 }
 func (r *run) account(ctx context.Context, d acme.Directory) error {
 	for _, uri := range []string{d.NonceURL, d.RegURL, d.OrderURL} {

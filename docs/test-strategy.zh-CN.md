@@ -13,7 +13,10 @@ IOS XE 导入和 HTTP 生命周期接入仍在后续任务。
 设备 CSR 的受限适配器、持久公共产物和离线 SSH 测试已实现；
 [证书策略校验](certificate-policy.md)已覆盖 CSR/服务身份、CA 链、模板及可信权限快照。
 [外部 CSR 的 ACME 流程](acme-external-csr.md)已覆盖签名 HTTPS、订单/账户关联、
-nonce、持久退避、响应丢失恢复及 SQLite v3；实际 DNS 后端仍由 #11 实现。
+nonce、持久退避、响应丢失恢复；[AD DNS-01 后端](ad-dns01.md)加入 SQLite v4
+所有权、GSS-TSIG 报文、原子更新、精确 TXT 清理和调用方取消恢复测试。
+loopback MIC 用于验证报文边界，不构成实际 KDC 认证证明；ILM 2.19.0 默认单 TXT，
+多值验证与实际 DNS ACL/解析视图留到 #15。公共 CI 不连接域环境。
 实机写入和实际 AD 权限证据仍由私有阶段验收核实。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。
 
