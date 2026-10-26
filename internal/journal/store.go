@@ -25,6 +25,8 @@ type Store struct {
 	services map[string]Service
 	mu       sync.RWMutex
 	closed   bool
+	acmeMu   sync.Mutex
+	acmeJobs map[string]bool
 }
 
 func Open(path string, services []Service) (*Store, error) {
@@ -124,7 +126,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return ErrStore
 	}
-	if app != applicationID || (version != 1 && version != 2) {
+	if app != applicationID || (version != 1 && version != 2 && version != 3) {
 		if app != 0 || version != 0 {
 			return ErrStore
 		}
@@ -162,6 +164,23 @@ func (s *Store) initialize() error {
 		}); err != nil {
 			return err
 		}
+		version = 2
+	}
+	if version == 2 {
+		if err := s.transaction(ctx, func(tx *sql.Tx) error {
+			for _, statement := range []string{
+				"CREATE TABLE acme_accounts (binding_id TEXT PRIMARY KEY, configuration TEXT NOT NULL, account_url TEXT NOT NULL)",
+				"CREATE TABLE acme_operations (operation_id TEXT PRIMARY KEY REFERENCES operations(id), binding_id TEXT NOT NULL REFERENCES acme_accounts(binding_id), revision INTEGER NOT NULL CHECK(revision>0), record TEXT NOT NULL)",
+				"PRAGMA user_version=3",
+			} {
+				if _, err := tx.ExecContext(ctx, statement); err != nil {
+					return ErrStore
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 	var mode, integrity string
 	var syncMode int
@@ -185,6 +204,9 @@ func (s *Store) initialize() error {
 		return ErrStore
 	}
 	if err := s.checkCSRStorage(ctx); err != nil {
+		return err
+	}
+	if err := s.checkACMEStorage(ctx); err != nil {
 		return err
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {

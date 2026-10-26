@@ -1,0 +1,46 @@
+{
+  "scope": "Reviewed immutable source references, not a live protocol capture or automatic ILM compatibility proof.",
+  "sources": [
+    {
+      "repository": "OmniTrustILM/core",
+      "tag": "2.19.0",
+      "commit": "eb5e9096fb0b7ff56c911184ff8601c615f83436",
+      "url": "https://github.com/OmniTrustILM/core/blob/eb5e9096fb0b7ff56c911184ff8601c615f83436/src/main/java/com/otilm/core/service/acme/impl/AcmeServiceImpl.java",
+      "gitBlob": "c19126b31850803bb19efd484a4f2ff768b6159b"
+    },
+    {
+      "repository": "OmniTrustILM/core",
+      "tag": "2.19.0",
+      "commit": "eb5e9096fb0b7ff56c911184ff8601c615f83436",
+      "url": "https://github.com/OmniTrustILM/core/blob/eb5e9096fb0b7ff56c911184ff8601c615f83436/src/main/java/com/otilm/core/api/acme/AcmeControllerImpl.java",
+      "gitBlob": "40378092ea030630001e58354216cec6b4340043"
+    },
+    {
+      "repository": "OmniTrustILM/interfaces",
+      "tag": "2.19.0",
+      "commit": "e62233777518296f70a151cf766dde5e1a6cea2d",
+      "url": "https://github.com/OmniTrustILM/interfaces/blob/e62233777518296f70a151cf766dde5e1a6cea2d/src/main/java/com/otilm/api/interfaces/core/acme/AcmeController.java",
+      "gitBlob": "85b756ecfa3a3e3747cf41626bde56b07da999df"
+    },
+    {
+      "repository": "OmniTrustILM/interfaces",
+      "tag": "2.19.0",
+      "commit": "e62233777518296f70a151cf766dde5e1a6cea2d",
+      "url": "https://github.com/OmniTrustILM/interfaces/blob/e62233777518296f70a151cf766dde5e1a6cea2d/src/main/java/com/otilm/api/model/core/acme/ChallengeType.java",
+      "gitBlob": "c392b29ef78982704d3177631f2e1652bfa79c2c"
+    }
+  ],
+  "client": {
+    "module": "golang.org/x/crypto",
+    "version": "v0.58.0",
+    "source": "https://github.com/golang/crypto/blob/v0.58.0/acme/rfc8555.go"
+  },
+  "observations": [
+    "ILM exposes Directory, newNonce, newAccount, newOrder, authorization, challenge, order, finalize and certificate resources through its ACME Profile path.",
+    "The reviewed Directory metadata sets externalAccountRequired=false. Account binding and identifier authorization remain necessary.",
+    "The reviewed ILM challenge types are dns-01 and http-01; this connector implements only the DNS-01 backend interface at this milestone.",
+    "Finalize parses the base64url external CSR and transitions the original order to processing before issuing through the RA/Authority.",
+    "The client library combines finalization, polling and download. Persistent intents and bounded HTTP/context guards wrap that combined call.",
+    "Account lookup uses onlyReturnExisting and the same supplied signing key. Unknown new-order responses cannot be safely matched by identifier lists alone."
+  ]
+}

@@ -12,6 +12,8 @@
 IOS XE 导入和 HTTP 生命周期接入仍在后续任务。
 设备 CSR 的受限适配器、持久公共产物和离线 SSH 测试已实现；
 [证书策略校验](certificate-policy.md)已覆盖 CSR/服务身份、CA 链、模板及可信权限快照。
+[外部 CSR 的 ACME 流程](acme-external-csr.md)已覆盖签名 HTTPS、订单/账户关联、
+nonce、持久退避、响应丢失恢复及 SQLite v3；实际 DNS 后端仍由 #11 实现。
 实机写入和实际 AD 权限证据仍由私有阶段验收核实。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。
 
