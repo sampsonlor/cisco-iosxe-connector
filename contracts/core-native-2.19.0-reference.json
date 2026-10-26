@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "repository": "OmniTrustILM/core",
+  "tag": "2.19.0",
+  "commit": "eb5e9096fb0b7ff56c911184ff8601c615f83436",
+  "path": "src/main/java/com/otilm/core/service/impl/LocationServiceImpl.java",
+  "gitBlob": "c75549292403cefcb77a54715a7cc6d5314514ef",
+  "url": "https://github.com/OmniTrustILM/core/blob/eb5e9096fb0b7ff56c911184ff8601c615f83436/src/main/java/com/otilm/core/service/impl/LocationServiceImpl.java",
+  "observations": [
+    {"lines": [564, 605], "behavior": "Native issue checks supportKeyManagement, requests CSR with renewal=false, passes CSR to RA issuance and saves returned pushAttributes plus metadata."},
+    {"lines": [656, 715], "behavior": "Native renewal checks persisted nonempty CSR/push attributes and supportKeyManagement, then requests a renewal CSR and renews through Core."},
+    {"lines": [795, 813], "behavior": "generateCsrLocation passes locationAttributes, csrAttributes and renewal to the Entity Provider using its persisted entityInstanceUuid."},
+    {"lines": [493, 528], "behavior": "Delayed push uses saved certificate-location pushAttributes and public leaf certificate content; withKey and returned metadata update the Core association."},
+    {"lines": [896, 935], "behavior": "Immediate push sends leaf, X.509 type, locationAttributes and saved pushAttributes, then stores withKey and certificate metadata."},
+    {"lines": [1085, 1098], "behavior": "Inventory synchronization replaces per-certificate CSR/push attributes from the returned Location DTO, so native associations must survive synchronization."}
+  ],
+  "interfaceFixtures": "ilm-2.19.0/sources.json",
+  "acceptanceLimit": "Pinned-source inspection and offline SDK integration do not constitute actual ILM Core acceptance (C-009)."
+}

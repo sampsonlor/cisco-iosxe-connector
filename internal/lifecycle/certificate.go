@@ -4,12 +4,17 @@ import (
 	"context"
 
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/certpolicy"
+	"github.com/sampsonlor/cisco-iosxe-connector/internal/csr"
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/journal"
 )
 
 type CertificateGate struct {
 	journal   *journal.Store
 	validator *certpolicy.Validator
+}
+
+func (g *CertificateGate) AllowsCSR(spec csr.Spec) bool {
+	return g != nil && g.validator != nil && g.validator.AllowsCSR(spec)
 }
 
 func (g *CertificateGate) PolicySHA256() string {

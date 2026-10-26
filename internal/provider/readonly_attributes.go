@@ -45,15 +45,36 @@ func (p *readOnlyProvider) ValidateLocationAttributes(ctx context.Context, id st
 	}
 	return nil, nil
 }
-func (p *readOnlyProvider) PushCertificateAttributes(context.Context, string) ([]mdl.BaseAttributeDto, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) PushCertificateAttributes(ctx context.Context, id string) ([]mdl.BaseAttributeDto, error) {
+	if _, err := p.nativeScope(ctx, id); err != nil {
+		return nil, err
+	}
+	return []mdl.BaseAttributeDto{definition(pushSpecs[0], "", true)}, nil
 }
-func (p *readOnlyProvider) ValidatePushCertificateAttributes(context.Context, string, []mdl.RequestAttribute) ([]string, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) ValidatePushCertificateAttributes(ctx context.Context, id string, attrs []mdl.RequestAttribute) ([]string, error) {
+	if _, err := p.nativeScope(ctx, id); err != nil {
+		return nil, err
+	}
+	v, err := requestValue(attrs)
+	if err != nil || !validPushAttrs(v) {
+		return []string{"invalid operation attributes"}, nil
+	}
+	return nil, nil
 }
-func (p *readOnlyProvider) GenerateCsrAttributes(context.Context, string) ([]mdl.BaseAttributeDto, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) GenerateCsrAttributes(ctx context.Context, id string) ([]mdl.BaseAttributeDto, error) {
+	if _, err := p.nativeScope(ctx, id); err != nil {
+		return nil, err
+	}
+	return []mdl.BaseAttributeDto{definition(csrSpecs[0], "", false)}, nil
 }
-func (p *readOnlyProvider) ValidateGenerateCsrAttributes(context.Context, string, []mdl.RequestAttribute) ([]string, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) ValidateGenerateCsrAttributes(ctx context.Context, id string, attrs []mdl.RequestAttribute) ([]string, error) {
+	r, err := p.nativeScope(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	v, err := requestValue(attrs)
+	if err != nil || !p.guard.validCSRAttrs(v, r.DeviceID) {
+		return []string{"invalid staging Trustpoint"}, nil
+	}
+	return nil, nil
 }

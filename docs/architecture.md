@@ -144,6 +144,9 @@ sequenceDiagram
 ```
 
 Native Core renewal and the ACME worker are mutually exclusive per Location.
+The implemented [native adapter](native-core-lifecycle.md) currently stops at
+STAGED, preserves per-certificate attributes during synchronization and requires
+an explicit authorizing host. The diagram above includes later activation design.
 Core native renewal calls RA/Authority directly; it is not an ACME client.
 The ACME worker gets its CSR through the in-process engine, not an invented
 public Core CSR endpoint. Core push has no chain field in the pinned contract;

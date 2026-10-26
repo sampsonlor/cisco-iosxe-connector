@@ -17,6 +17,11 @@ type nativeBackend struct {
 	calls  int
 	target provider.NativeTarget
 	denied bool
+	err    error
+}
+
+func (b *nativeBackend) Association(context.Context, provider.NativeTarget, []byte) (provider.NativeAssociation, error) {
+	return provider.NativeAssociation{}, nil
 }
 
 func (b *nativeBackend) Enabled(_ context.Context, q provider.NativeTarget) error {
@@ -29,6 +34,9 @@ func (b *nativeBackend) Enabled(_ context.Context, q provider.NativeTarget) erro
 func (b *nativeBackend) CSR(_ context.Context, q provider.NativeTarget, slot string, renewal bool) (provider.NativeCSR, error) {
 	b.calls++
 	b.target = q
+	if b.err != nil {
+		return provider.NativeCSR{}, b.err
+	}
 	if slot != "HTTPS-STAGE-A" || !renewal {
 		return provider.NativeCSR{}, errors.New("secret://unexpected-private-detail")
 	}
@@ -37,6 +45,9 @@ func (b *nativeBackend) CSR(_ context.Context, q provider.NativeTarget, slot str
 func (b *nativeBackend) Push(_ context.Context, q provider.NativeTarget, id string, leaf []byte) (provider.NativePush, error) {
 	b.calls++
 	b.target = q
+	if b.err != nil {
+		return provider.NativePush{}, b.err
+	}
 	if id != operationID || string(leaf) != "synthetic" {
 		return provider.NativePush{}, provider.ErrNativeRejected
 	}
@@ -67,7 +78,7 @@ func TestNativeSDKContractAndAuthentication(t *testing.T) {
 	})
 	for _, op := range []string{"csr", "push"} {
 		w := request(authed, "GET", p+"/locations/"+op+"/attributes", "")
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"version":"v3"`) {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"schemaVersion":"v3"`) || !strings.Contains(w.Body.String(), `"version":3`) {
 			t.Fatalf("definitions: %d %s", w.Code, w.Body)
 		}
 	}
@@ -105,6 +116,23 @@ func TestNativeSDKContractAndAuthentication(t *testing.T) {
 	if w.Code != 501 {
 		t.Fatalf("native identity deletion: %d", w.Code)
 	}
+	for _, failure := range []struct {
+		err    error
+		status int
+	}{{provider.ErrNativeScope, 403}, {provider.ErrNativeConflict, 409}, {provider.ErrNativeRejected, 422}, {context.DeadlineExceeded, 504}, {provider.ErrNativeUnavailable, 500}} {
+		b.err = errors.Join(failure.err, errors.New("secret://private-transport-detail"))
+		for _, op := range []string{"csr", "push"} {
+			body := pushBody()
+			if op == "csr" {
+				body = csrBody("HTTPS-STAGE-A")
+			}
+			w = request(authed, "POST", p+"/locations/"+op, body)
+			if w.Code != failure.status || strings.Contains(w.Body.String(), "private-transport") || strings.Contains(w.Body.String(), "secret://") {
+				t.Fatalf("error boundary: %d %s", w.Code, w.Body)
+			}
+		}
+	}
+	b.err = nil
 	before := b.calls
 	for _, body := range []string{strings.Replace(pushBody(), `"certificate":`, `"chain":[],"certificate":`, 1), strings.Replace(pushBody(), `"version":"v3"`, `"version":"v2"`, 1)} {
 		if w = request(authed, "POST", p+"/locations/push", body); w.Code != 422 {

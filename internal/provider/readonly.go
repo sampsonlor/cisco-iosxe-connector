@@ -64,18 +64,26 @@ type readOnlyProvider struct {
 	devices map[string]ManagedDevice
 	guard   *boundary
 	reader  InventoryReader
+	native  NativeLifecycle
 }
 
-// readOnlySDK mounts the official routes but advertises only usable operations.
+// readOnlySDK mounts official routes and advertises only configured capabilities.
 type readOnlySDK struct {
 	*entity.Handler
 	hasReader bool
+	hasNative bool
 }
 
 func (h readOnlySDK) FunctionGroup() shared.V1FunctionGroup {
 	g := h.Handler.FunctionGroup()
 	g.EndPoints = slices.DeleteFunc(g.EndPoints, func(e shared.V1Endpoint) bool {
-		return strings.Contains(e.Context, "/locations/csr") || strings.Contains(e.Context, "/locations/push") || strings.Contains(e.Context, "/locations/remove") || (!h.hasReader && strings.HasSuffix(e.Context, "/locations"))
+		if strings.Contains(e.Context, "/locations/remove") || (h.hasNative && e.Method == http.MethodDelete) {
+			return true
+		}
+		if !h.hasNative && (strings.Contains(e.Context, "/locations/csr") || strings.Contains(e.Context, "/locations/push")) {
+			return true
+		}
+		return !h.hasReader && strings.HasSuffix(e.Context, "/locations")
 	})
 	return g
 }
@@ -83,6 +91,10 @@ func (h readOnlySDK) FunctionGroup() shared.V1FunctionGroup {
 // NewReadOnlyHandler does not start a listener. The host must provide transport
 // authentication/authorization before exposing it to Core.
 func NewReadOnlyHandler(store *EntityStore, cfg ReadOnlyConfig, reader InventoryReader) (http.Handler, error) {
+	return newProviderHandler(store, cfg, reader, nil)
+}
+
+func newProviderHandler(store *EntityStore, cfg ReadOnlyConfig, reader InventoryReader, native NativeLifecycle) (http.Handler, error) {
 	if store == nil || store.db == nil {
 		return nil, errors.New("entity store is required")
 	}
@@ -90,7 +102,7 @@ func NewReadOnlyHandler(store *EntityStore, cfg ReadOnlyConfig, reader Inventory
 	if err != nil {
 		return nil, err
 	}
-	p := &readOnlyProvider{store: store, devices: devices, reader: reader}
+	p := &readOnlyProvider{store: store, devices: devices, reader: reader, native: native}
 	policy.ResolveEntity = func(ctx context.Context, id string) (string, error) {
 		r, err := store.get(ctx, id)
 		if errors.Is(err, errEntityMissing) {
@@ -117,7 +129,11 @@ func NewReadOnlyHandler(store *EntityStore, cfg ReadOnlyConfig, reader Inventory
 	if err != nil {
 		return nil, err
 	}
-	c, err := shared.New(shared.Register(readOnlySDK{h, reader != nil}), shared.WithInfoVersion(shared.VersionV1), shared.WithHealthVersion(shared.VersionV1), shared.WithErrorRenderer(shared.WriteV1Error), shared.WithLogger(slog.Default()), shared.WithInfo(shared.Info{ID: "cisco-iosxe-connector", Name: "Cisco IOS XE read-only provider", Version: "0.1.0-dev"}),
+	name := "Cisco IOS XE read-only provider"
+	if native != nil {
+		name = "Cisco IOS XE stage-only provider"
+	}
+	c, err := shared.New(shared.Register(readOnlySDK{h, reader != nil, native != nil}), shared.WithInfoVersion(shared.VersionV1), shared.WithHealthVersion(shared.VersionV1), shared.WithErrorRenderer(shared.WriteV1Error), shared.WithLogger(slog.Default()), shared.WithInfo(shared.Info{ID: "cisco-iosxe-connector", Name: name, Version: "0.1.0-dev"}),
 		shared.WithExtraEndpoints(
 			shared.ExtraEndpoint{FunctionGroupCode: entity.FunctionGroupCode, Method: http.MethodGet, Context: "/v1", Name: "listSupportedFunctions"},
 			shared.ExtraEndpoint{FunctionGroupCode: entity.FunctionGroupCode, Method: http.MethodGet, Context: "/v1/health", Name: "checkHealth"},
@@ -209,6 +225,9 @@ func (p *readOnlyProvider) UpdateEntityInstance(ctx context.Context, id string, 
 
 // Deletion changes connector metadata only; no inventory/device method is called.
 func (p *readOnlyProvider) RemoveEntityInstance(ctx context.Context, id string) error {
+	if p.native != nil {
+		return readOnlyError()
+	}
 	if _, err := p.record(ctx, id); err != nil {
 		return err
 	}
@@ -247,6 +266,14 @@ func (p *readOnlyProvider) GetLocationDetail(ctx context.Context, id string, in 
 	if err != nil || !snapshot.Complete || len(snapshot.Certificates) > 128 {
 		return nil, &shared.Error{Status: 502, ErrorCode: "INVENTORY_INCOMPLETE", Detail: "complete inventory is unavailable"}
 	}
+	keyManagement := false
+	if p.native != nil {
+		err = p.native.Enabled(ctx, nativeTarget(r))
+		if err != nil && !errors.Is(err, ErrNativeScope) {
+			return nil, nativeError(err)
+		}
+		keyManagement = err == nil
+	}
 	certs := make([]mdl.CertificateLocationDto, 0, len(snapshot.Certificates))
 	totalBytes := 0
 	for _, c := range snapshot.Certificates {
@@ -263,20 +290,34 @@ func (p *readOnlyProvider) GetLocationDetail(ctx context.Context, id string, in 
 		if err != nil {
 			return nil, &shared.Error{Status: 502, ErrorCode: "INVENTORY_INVALID", Detail: "invalid certificate binding metadata"}
 		}
-		certs = append(certs, mdl.CertificateLocationDto{CertificateData: base64.StdEncoding.EncodeToString(c.DER), CertificateType: &typ, WithKey: c.WithKey, Metadata: metadata})
+		entry := mdl.CertificateLocationDto{CertificateData: base64.StdEncoding.EncodeToString(c.DER), CertificateType: &typ, WithKey: c.WithKey, Metadata: metadata}
+		if keyManagement {
+			a, err := p.native.Association(ctx, nativeTarget(r), slices.Clone(c.DER))
+			if err != nil {
+				return nil, nativeError(err)
+			}
+			if a.OperationID != "" {
+				if !canonicalUUID(a.OperationID) || !slices.Contains(d.Policy.StagingTrustpoints, a.StagingTrustpoint) {
+					return nil, nativeError(ErrNativeUnavailable)
+				}
+				entry.CsrAttributes = []mdl.BaseAttributeDto{definition(csrSpecs[0], a.StagingTrustpoint, true)}
+				entry.PushAttributes = []mdl.BaseAttributeDto{definition(pushSpecs[0], a.OperationID, true)}
+			}
+		}
+		certs = append(certs, entry)
 	}
-	return &mdl.LocationDetailResponseDto{Certificates: certs, MultipleEntries: true, SupportKeyManagement: false}, nil
+	return &mdl.LocationDetailResponseDto{Certificates: certs, MultipleEntries: true, SupportKeyManagement: keyManagement}, nil
 }
 
 func readOnlyError() error {
 	return &shared.Error{Status: 501, ErrorCode: "READ_ONLY_PROVIDER", Detail: "certificate mutation is not implemented"}
 }
-func (p *readOnlyProvider) PushCertificateToLocation(context.Context, string, *mdl.PushCertificateRequestDto) (*mdl.PushCertificateResponseDto, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) PushCertificateToLocation(ctx context.Context, id string, in *mdl.PushCertificateRequestDto) (*mdl.PushCertificateResponseDto, error) {
+	return p.nativePush(ctx, id, in)
 }
 func (p *readOnlyProvider) RemoveCertificateFromLocation(context.Context, string, *mdl.RemoveCertificateRequestDto) (*mdl.RemoveCertificateResponseDto, error) {
 	return nil, readOnlyError()
 }
-func (p *readOnlyProvider) GenerateCsrLocation(context.Context, string, *mdl.GenerateCsrRequestDto) (*mdl.GenerateCsrResponseDto, error) {
-	return nil, readOnlyError()
+func (p *readOnlyProvider) GenerateCsrLocation(ctx context.Context, id string, in *mdl.GenerateCsrRequestDto) (*mdl.GenerateCsrResponseDto, error) {
+	return p.nativeCSR(ctx, id, in)
 }

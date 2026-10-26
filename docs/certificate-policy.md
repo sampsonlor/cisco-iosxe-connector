@@ -4,7 +4,8 @@
 approved service identity, explicit CA bundle and trusted enrollment evidence.
 `lifecycle.CertificateGate.Accept` reads that CSR from SQLite and commits
 CERT_READY only after validation. It has no signing, network-chain-fetching,
-device import or HTTPS binding capability. The HTTP Provider remains read-only.
+device import or HTTPS binding capability. The default HTTP Provider remains
+read-only; the opt-in [native adapter](native-core-lifecycle.md) uses these checks.
 
 ## Host configuration and trust boundary
 
@@ -147,7 +148,8 @@ The [runtime StageGate](stage-only.md) revalidates the actual certificate,
 time/evidence, device key and baseline immediately before public-certificate
 import. Journal v5 records its immutable artifacts/settings and exact read-only
 recovery boundary. The counting ImportGate remains a journal harness and rejects
-real recorded CSRs; HTTP lifecycle wiring follows #13.
+real recorded CSRs; the [native HTTP lifecycle](native-core-lifecycle.md) now
+shares the runtime gates. Actual Core/router acceptance remains private.
 
 ## Executable evidence
 

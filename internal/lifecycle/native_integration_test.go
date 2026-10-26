@@ -38,10 +38,19 @@ func (d *nativeCSRDevice) Generate(context.Context, csr.Request) (csr.Result, er
 }
 func (d *nativeCSRDevice) Inspect(context.Context, csr.Request) error { return nil }
 
-type nativeInventory struct{}
+type nativeInventory struct{ f *stageFixture }
 
-func (nativeInventory) ReadHTTPS(context.Context, provider.DeviceAccess) (provider.InventorySnapshot, error) {
-	return provider.InventorySnapshot{Complete: true}, nil
+func (n nativeInventory) ReadHTTPS(context.Context, provider.DeviceAccess) (provider.InventorySnapshot, error) {
+	if n.f == nil {
+		return provider.InventorySnapshot{Complete: true}, nil
+	}
+	n.f.backend.mu.Lock()
+	defer n.f.backend.mu.Unlock()
+	certs := []provider.PublicCertificate{{DER: n.f.baseline}}
+	if len(n.f.backend.obs.LeafDER) > 0 {
+		certs = append(certs, provider.PublicCertificate{DER: n.f.backend.obs.LeafDER})
+	}
+	return provider.InventorySnapshot{Complete: true, Certificates: certs}, nil
 }
 
 type nativeFixture struct {
@@ -107,7 +116,7 @@ func (n *nativeFixture) rewire(t *testing.T) {
 	stageMust(t, err)
 	n.engine, err = nativeflow.New(n.f.s, cg, cert, n.f.gate, []nativeflow.Service{n.service})
 	stageMust(t, err)
-	n.h, err = provider.NewNativeHandler(n.es, n.cfg, nativeInventory{}, n.engine, func(*http.Request) error { return nil })
+	n.h, err = provider.NewNativeHandler(n.es, n.cfg, nativeInventory{n.f}, n.engine, func(*http.Request) error { return nil })
 	stageMust(t, err)
 }
 func TestNativeCSRPushSQLiteStageIntegration(t *testing.T) {
@@ -146,6 +155,14 @@ func TestNativeCSRPushSQLiteStageIntegration(t *testing.T) {
 	}
 	if w = nativeHTTP(n.h, "POST", p+"push", push); w.Code != 200 || n.f.backend.imports != 1 {
 		t.Fatalf("duplicate push: %d %s", w.Code, w.Body)
+	}
+	if w = nativeHTTP(n.h, "POST", strings.TrimSuffix(p, "/"), `{"locationAttributes":`+attrs+`}`); w.Code != 200 || !strings.Contains(w.Body.String(), "csrAttributes") || !strings.Contains(w.Body.String(), "operationId") || strings.Contains(w.Body.String(), `"withKey":true`) {
+		t.Fatalf("inventory association: %d %s", w.Code, w.Body)
+	}
+	association, err := n.engine.Association(ctx, n.target, n.f.baseline)
+	stageMust(t, err)
+	if association.OperationID != "" {
+		t.Fatal("existing certificate was automatically adopted")
 	}
 	n.f.backend.obs.PublicKeyDER = nil
 	if w = nativeHTTP(n.h, "POST", p+"push", push); w.Code == 200 || strings.Contains(w.Body.String(), `"withKey":true`) || n.f.backend.imports != 1 {
@@ -188,8 +205,55 @@ func TestNativeOwnershipCorrelationAndUnknownCSR(t *testing.T) {
 	}
 	c := n.service.Correlation
 	c.Owner = journal.ACMEWorker
-	worker, err := nativeflow.New(n.f.s, nil, nil, nil, []nativeflow.Service{{Correlation: c, Spec: n.service.Spec}})
+	cg, err := lifecycle.NewCSRGate(n.f.s, n.device)
+	stageMust(t, err)
+	vg, err := lifecycle.NewCertificateGate(n.f.s, n.f.v)
+	stageMust(t, err)
+	worker, err := nativeflow.New(n.f.s, cg, vg, n.f.gate, []nativeflow.Service{{Correlation: c, Spec: n.service.Spec}})
 	if err == nil && worker.Enabled(ctx, n.target) == nil {
 		t.Fatal("ACME owner accepted native lifecycle")
+	}
+	changed := n.service
+	changed.Spec.DNSNames = []string{changed.Spec.CommonName, "extra.example.test"}
+	if _, err = nativeflow.New(n.f.s, cg, vg, n.f.gate, []nativeflow.Service{changed}); err == nil {
+		t.Fatal("CSR spec outside approved policy accepted at startup")
+	}
+}
+
+func TestNativePushRejectsReplayAndReconcilesUncertainImport(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(map[bool]string{false: "complete", true: "partial"}[partial], func(t *testing.T) {
+			n := newNativeFixture(t)
+			ctx := context.Background()
+			q, err := n.engine.CSR(ctx, n.target, "HTTPS-STAGE-A", false)
+			stageMust(t, err)
+			if _, err = n.engine.Push(ctx, n.target, q.OperationID, n.f.baseline); err == nil || n.f.backend.imports != 0 {
+				t.Fatal("wrong CSR key reached import")
+			}
+			bad := n.target
+			bad.Target = "192.0.2.11"
+			if _, err = n.engine.Push(ctx, bad, q.OperationID, n.f.leaf); err == nil || n.f.backend.imports != 0 {
+				t.Fatal("push escaped approved target")
+			}
+			n.f.backend.lost = true
+			n.f.backend.partial = partial
+			if _, err = n.engine.Push(ctx, n.target, q.OperationID, n.f.leaf); err == nil || n.f.backend.imports != 1 {
+				t.Fatal("lost import fabricated success")
+			}
+			stageMust(t, n.f.s.Close())
+			n.f.s, err = journal.Open(n.f.path, n.f.services)
+			stageMust(t, err)
+			n.rewire(t)
+			result, err := n.engine.Push(ctx, n.target, q.OperationID, n.f.leaf)
+			if partial && (err == nil || result.WithKey) {
+				t.Fatal("partial import accepted")
+			}
+			if !partial && (err != nil || !result.WithKey) {
+				t.Fatalf("complete read-only reconciliation failed: %v", err)
+			}
+			if n.f.backend.imports != 1 || !bytes.Equal(n.f.backend.obs.ActiveDER, n.f.baseline) {
+				t.Fatal("unknown import replayed or active TLS changed")
+			}
+		})
 	}
 }
