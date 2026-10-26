@@ -6,8 +6,9 @@ An independent, community connector for certificate discovery and renewal on
 Cisco IOS XE. Initial target: the HTTPS service on Cisco C8000V, with OmniTrust
 ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
-**Status: read-only Provider, SQLite metadata, NETCONF/SSH reads, certificate inventory and offline tests. There is no deployable
-connector or device-writing implementation yet.** A passing CI run validates
+**Status: read-only Provider, SQLite metadata/journal, NETCONF/SSH reads,
+certificate inventory, opt-in CSR library and certificate validation. There is
+no deployable renewal service yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
 OmniTrust.
@@ -53,6 +54,12 @@ pinned SSH adapter, public CSR/key validation and durable generation intent.
 Offline SSH/SQLite tests cover this path; actual target write acceptance remains
 private. HTTP lifecycle wiring, signing, inactive import and activation follow
 their own milestones.
+
+[Certificate acceptance policy](docs/certificate-policy.md) now validates saved
+CSRs, identity/purpose/time, pinned CA paths and AD CS template/enrollment evidence
+before durable CERT_READY. Its private evidence source remains a trusted host
+dependency; offline snapshots do not prove live AD permissions. Import and
+activation require their own device and policy rechecks.
 
 ## Local checks
 

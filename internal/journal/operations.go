@@ -104,6 +104,17 @@ func (s *Store) change(ctx context.Context, ref Ref, revision int64, to State, c
 		if r.Revision != revision {
 			return ErrConflict
 		}
+		if to == CertReady {
+			// The digest-only foundation path cannot bypass validation once a
+			// real CSR request has been recorded. Runtime hosts use the gate.
+			var recorded int
+			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM csr_operations WHERE operation_id=?", r.ID).Scan(&recorded); err != nil {
+				return ErrStore
+			}
+			if recorded != 0 {
+				return ErrState
+			}
+		}
 		allowed := (r.State == Precheck && (to == KeyCreating || to == FailedNoSwitch)) || (r.State == KeyCreating && to == CSRReady) || (r.State == CSRReady && to == AwaitingIssuance) || (r.State == AwaitingIssuance && to == CertReady && digest.MatchString(certificate) && certificate != r.Correlation.BaselineSHA256)
 		if !allowed {
 			return ErrState
@@ -122,6 +133,9 @@ func (s *Store) Progress(ctx context.Context, ref Ref, revision int64, to State)
 	}
 	return s.change(ctx, ref, revision, to, "")
 }
+
+// CertificateReady is the digest-only journal foundation harness. It rejects
+// operations with a recorded CSR; runtime flows use CertificateValidated.
 func (s *Store) CertificateReady(ctx context.Context, ref Ref, revision int64, certificateSHA256 string) (Record, error) {
 	return s.change(ctx, ref, revision, CertReady, certificateSHA256)
 }
