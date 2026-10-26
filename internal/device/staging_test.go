@@ -151,7 +151,11 @@ func stageWire(t *testing.T, mode string) (*fixture, *StageAdapter, staging.Requ
 					if mode == "fingerprint" {
 						display = strings.Repeat("0", 40)
 					}
-					_, _ = io.WriteString(ch, "Certificate has the following attributes:\nFingerprint SHA1: "+display+"\n% Do you accept this certificate? [yes/no]: ")
+					strong := ""
+					if mode == "malformed-strong-fingerprint" {
+						strong = "Fingerprint SHA256: invalid-diagnostic\n"
+					}
+					_, _ = io.WriteString(ch, "Certificate has the following attributes:\nFingerprint SHA1: "+display+"\n"+strong+"% Do you accept this certificate? [yes/no]: ")
 					answer, err := r.ReadString('\n')
 					if err != nil {
 						return
@@ -231,14 +235,14 @@ func assertNoStageActivation(t *testing.T, logs []string) {
 	}
 }
 func TestStageSSHRejectsUnsafeEvidenceAndNeverAnswersOverwrite(t *testing.T) {
-	for _, mode := range []string{"ntp", "wrong-key-binding", "exportable", "denied", "overwrite", "fingerprint", "lost-leaf-reply", "stderr"} {
+	for _, mode := range []string{"ntp", "wrong-key-binding", "exportable", "denied", "overwrite", "fingerprint", "malformed-strong-fingerprint", "lost-leaf-reply", "stderr"} {
 		t.Run(mode, func(t *testing.T) {
 			f, a, q, count := stageWire(t, mode)
 			err := a.Import(context.Background(), q, func(context.Context) error { return nil })
 			if err == nil || strings.Contains(err.Error(), "private diagnostic") {
 				t.Fatal("unsafe import accepted or diagnostic leaked", err)
 			}
-			if mode == "overwrite" || mode == "fingerprint" {
+			if mode == "overwrite" || mode == "fingerprint" || mode == "malformed-strong-fingerprint" {
 				for _, line := range f.logs() {
 					if line == "answer:yes" {
 						t.Fatal("unverified acceptance prompt answered")
