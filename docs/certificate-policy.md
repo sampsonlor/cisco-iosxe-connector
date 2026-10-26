@@ -143,10 +143,11 @@ the certificate gate persists only the accepted digest/state/history, not a reus
 grant or receipt. Every `Accept` retry, including after reopening SQLite, checks
 time and evidence again. Failure leaves service ownership and state intact.
 
-CERT_READY is not import authorization indefinitely. #12 must revalidate the
-actual certificate, time/evidence, device key and baseline immediately before
-the real stage-only adapter dispatches. The current counting ImportGate is a
-journal harness and remains disconnected from HTTP and device import.
+The [runtime StageGate](stage-only.md) revalidates the actual certificate,
+time/evidence, device key and baseline immediately before public-certificate
+import. Journal v5 records its immutable artifacts/settings and exact read-only
+recovery boundary. The counting ImportGate remains a journal harness and rejects
+real recorded CSRs; HTTP lifecycle wiring follows #13.
 
 ## Executable evidence
 

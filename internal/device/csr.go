@@ -45,7 +45,17 @@ type csrPreflight struct {
 // inventory.VerifyCSRBaseline; it must not replace semantic verification with
 // transport success. No existing read-only Client/Provider enables this adapter.
 func NewCSRAdapter(client *Client, policies map[string]CSRPolicy, verify func(Evidence, csr.Request) error) (*CSRAdapter, error) {
-	if client == nil || verify == nil || len(policies) == 0 {
+	if verify == nil {
+		return nil, ErrPolicy
+	}
+	out, err := csrPolicies(client, policies)
+	if err != nil {
+		return nil, err
+	}
+	return &CSRAdapter{client: client, policies: out, verify: verify}, nil
+}
+func csrPolicies(client *Client, policies map[string]CSRPolicy) (map[string]CSRPolicy, error) {
+	if client == nil || len(policies) == 0 {
 		return nil, ErrPolicy
 	}
 	out := map[string]CSRPolicy{}
@@ -67,14 +77,17 @@ func NewCSRAdapter(client *Client, policies map[string]CSRPolicy, verify func(Ev
 		p.ProtectedNames = slices.Clone(p.ProtectedNames)
 		out[id] = p
 	}
-	return &CSRAdapter{client: client, policies: out, verify: verify}, nil
+	return out, nil
 }
 func (a *CSRAdapter) request(q csr.Request) (*Client, CSRPolicy, error) {
 	if a == nil || a.client == nil {
 		return nil, CSRPolicy{}, ErrPolicy
 	}
-	p, ok := a.policies[q.DeviceID]
-	target := a.client.targets[q.DeviceID]
+	return scopedCSRClient(a.client, a.policies, q)
+}
+func scopedCSRClient(client *Client, policies map[string]CSRPolicy, q csr.Request) (*Client, CSRPolicy, error) {
+	p, ok := policies[q.DeviceID]
+	target := client.targets[q.DeviceID]
 	spec, err := csr.Normalize(q.Spec)
 	expected, _ := json.Marshal(p.Spec)
 	actual, _ := json.Marshal(spec)
@@ -91,7 +104,7 @@ func (a *CSRAdapter) request(q csr.Request) (*Client, CSRPolicy, error) {
 	if !activeProtected {
 		return nil, p, ErrPolicy
 	}
-	c := *a.client
+	c := *client
 	c.observer = nil
 	c.requiredHostKey = q.HostKeySHA256
 	target.NETCONF = Endpoint{}
@@ -266,14 +279,7 @@ func (a *CSRAdapter) Generate(ctx context.Context, q csr.Request) (result csr.Re
 	if _, err = shell.command("crypto pki trustpoint "+q.Trustpoint, shell.host+"(ca-trustpoint)#"); err != nil {
 		return result, err
 	}
-	subject := "CN=" + q.Spec.CommonName
-	if q.Spec.Organization != "" {
-		subject += ",O=" + q.Spec.Organization
-	}
-	if q.Spec.OrganizationalUnit != "" {
-		subject += ",OU=" + q.Spec.OrganizationalUnit
-	}
-	commands := []string{"enrollment terminal pem", "serial-number none", "fqdn none", "ip-address none", "subject-name " + subject, "subject-alt-name " + strings.Join(q.Spec.DNSNames, ","), "rsakeypair " + q.KeyLabel(), "hash sha256"}
+	commands := csrTrustpointCommands(q.Spec, q.KeyLabel())
 	for _, command := range commands {
 		if _, err = shell.command(command, shell.host+"(ca-trustpoint)#"); err != nil {
 			return result, err
@@ -338,6 +344,17 @@ func (a *CSRAdapter) Generate(ctx context.Context, q csr.Request) (result csr.Re
 		return csr.Result{}, ErrPolicy
 	}
 	return result, nil
+}
+
+func csrTrustpointCommands(spec csr.Spec, label string) []string {
+	subject := "CN=" + spec.CommonName
+	if spec.Organization != "" {
+		subject += ",O=" + spec.Organization
+	}
+	if spec.OrganizationalUnit != "" {
+		subject += ",OU=" + spec.OrganizationalUnit
+	}
+	return []string{"enrollment terminal pem", "serial-number none", "fqdn none", "ip-address none", "subject-name " + subject, "subject-alt-name " + strings.Join(spec.DNSNames, ","), "rsakeypair " + label, "hash sha256"}
 }
 
 func trustpointConfig(raw []byte) (map[string]string, error) {

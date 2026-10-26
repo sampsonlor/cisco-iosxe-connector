@@ -1,4 +1,4 @@
-// Package device provides pinned IOS XE discovery and a separate opt-in CSR channel.
+// Package device provides pinned IOS XE discovery and opt-in CSR/staging channels.
 package device
 
 import (

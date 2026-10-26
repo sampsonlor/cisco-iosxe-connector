@@ -1,6 +1,5 @@
-// Package lifecycle contains the shared API/worker side-effect gates. Actual
-// device CSR, certificate validation and inactive import adapters are separate
-// milestones and are not exposed by the read-only Provider.
+// Package lifecycle contains shared API/worker side-effect gates. The read-only
+// Provider does not expose CSR, issuance or the opt-in inactive import adapter.
 package lifecycle
 
 import (
@@ -21,8 +20,8 @@ func NewImportGate(store *journal.Store) (*ImportGate, error) {
 	return &ImportGate{journal: store}, nil
 }
 
-// Stage is an internal entry point for an already validated certificate. The
-// production validator and adapter must be wired before advertising SDK push.
+// Stage is the digest-only foundation harness. Recorded runtime CSRs require
+// StageGate's fresh validation, device/TLS observation and durable artifacts.
 func (g *ImportGate) Stage(ctx context.Context, ref journal.Ref, certificateSHA256 string, importer Importer) (journal.Record, error) {
 	if g == nil || g.journal == nil || importer == nil {
 		return journal.Record{}, journal.ErrStore

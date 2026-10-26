@@ -168,6 +168,15 @@ func (s *Store) ImportOnce(ctx context.Context, ref Ref, certificateSHA256 strin
 		if r.CertificateSHA256 != certificateSHA256 {
 			return ErrCorrelation
 		}
+		// The digest-only foundation harness cannot dispatch a recorded runtime
+		// CSR. Runtime imports require StageOnce and fresh validator receipts.
+		var realCSR int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM csr_operations WHERE operation_id=?", r.ID).Scan(&realCSR); err != nil {
+			return ErrStore
+		}
+		if realCSR != 0 {
+			return ErrState
+		}
 		result = r
 		switch r.State {
 		case Staged:

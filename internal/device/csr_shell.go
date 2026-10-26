@@ -107,7 +107,7 @@ func (s *csrShell) read(expected string, questions bool) ([]byte, string, error)
 			}
 		}
 		trimmed := strings.TrimRight(raw, " \r\n")
-		for _, question := range []string{displayQuestion, redisplayQuestion} {
+		for _, question := range []string{displayQuestion, redisplayQuestion, certificateInputEnd, acceptCertificateQuestion} {
 			if strings.HasSuffix(trimmed, question) {
 				if !questions {
 					return nil, "", ErrProtocol
