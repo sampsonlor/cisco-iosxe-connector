@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -42,6 +43,7 @@ type stageBackend struct {
 	lost, partial   bool
 	entered, finish chan struct{}
 	before          func()
+	after           func()
 }
 
 func (b *stageBackend) Inspect(ctx context.Context, _ staging.Request) (staging.Observation, error) {
@@ -75,6 +77,9 @@ func (b *stageBackend) Import(ctx context.Context, q staging.Request, authorize 
 	if !b.partial {
 		b.obs.LeafDER = bytes.Clone(q.LeafDER)
 	}
+	if b.after != nil {
+		b.after()
+	}
 	if b.lost {
 		return errors.New("synthetic lost import reply")
 	}
@@ -82,19 +87,20 @@ func (b *stageBackend) Import(ctx context.Context, q staging.Request, authorize 
 }
 
 type stageFixture struct {
-	s                    *journal.Store
-	path                 string
-	services             []journal.Service
-	r                    journal.Record
-	v                    *certpolicy.Validator
-	material             csr.Result
-	spec                 csr.Spec
-	leaf, root, baseline []byte
-	backend              *stageBackend
-	gate                 *lifecycle.StageGate
-	denied               bool
-	probeFail            bool
-	probes               int
+	s                         *journal.Store
+	path                      string
+	services                  []journal.Service
+	r                         journal.Record
+	v                         *certpolicy.Validator
+	material                  csr.Result
+	spec                      csr.Spec
+	leaf, root, baseline      []byte
+	backend                   *stageBackend
+	gate                      *lifecycle.StageGate
+	denied                    bool
+	probeFail                 bool
+	probes                    int
+	baselineTLS, candidateTLS tls.Certificate
 }
 
 func newStageFixture(t *testing.T) *stageFixture {
@@ -123,6 +129,8 @@ func newStageFixture(t *testing.T) *stageFixture {
 	leaf.SerialNumber = big.NewInt(3)
 	f.baseline, err = x509.CreateCertificate(rand.Reader, leaf, ca, &caKey.PublicKey, caKey)
 	stageMust(t, err)
+	f.baselineTLS = tls.Certificate{Certificate: [][]byte{f.baseline, f.root}, PrivateKey: caKey}
+	f.candidateTLS = tls.Certificate{Certificate: [][]byte{f.leaf, f.root}, PrivateKey: key}
 	p := certpolicy.Policy{ID: "https-stage", Spec: f.spec, RAProfileID: "ra-a", AuthorityID: "ca-a", PrincipalRef: "principal://issuer/a", EvidenceRef: "evidence://private/a", BundleRef: "bundle://approved/a", Roots: [][]byte{f.root}, IssuerSHA256: []string{certpolicy.SHA256(f.root)}, Template: certpolicy.Template{Kind: certpolicy.V1, Name: "Web"}, KeyUsage: leaf.KeyUsage, MinRemaining: time.Hour, MaxLifetime: 2 * 365 * 24 * time.Hour, MaxBackdate: time.Hour, MaxClockAge: time.Minute, MaxClockError: time.Second, MaxEvidenceAge: time.Hour}
 	f.v, err = certpolicy.New(p, validationClock(func(context.Context) (certpolicy.TimeReading, error) {
 		n := time.Now().UTC()
