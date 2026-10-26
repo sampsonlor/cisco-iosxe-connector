@@ -18,6 +18,15 @@ func (s *cancelSolver) Present(ctx context.Context, c Challenge) error {
 	if err := s.f.Present(ctx, c); err != nil {
 		return err
 	}
+	// Model a durable progress revision whose caller did not observe completion
+	// before cancellation. Recovery must reload it rather than use stale memory.
+	flow, err := s.f.store.ACMEStatus(ctx, s.f.ref)
+	if err != nil {
+		return err
+	}
+	if _, err = s.f.store.SaveACME(ctx, s.f.ref, flow.Revision, flow); err != nil {
+		return err
+	}
 	s.cancel()
 	return ctx.Err()
 }

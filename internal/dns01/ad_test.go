@@ -44,6 +44,9 @@ func startDNS(t *testing.T, handler dns.Handler, auth dns.TsigProvider) string {
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	server := &dns.Server{Listener: listener, Handler: handler, TsigProvider: auth, ReadTimeout: time.Second, WriteTimeout: time.Second, NotifyStartedFunc: func() { close(ready) }}
+	// The library's default DNS query server rejects UPDATE before dispatch.
+	// Our loopback authoritative handler explicitly validates its prerequisites.
+	server.MsgAcceptFunc = func(dns.Header) dns.MsgAcceptAction { return dns.MsgAccept }
 	go func() { done <- server.ActivateAndServe() }()
 	select {
 	case <-ready:
@@ -179,6 +182,9 @@ func (p *dnsPeer) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		}
 	}
 	if req.IsTsig() != nil && !p.unsigned {
+		if req.Opcode == dns.OpcodeUpdate {
+			res.Question = nil // RFC 2136 minimal response; no echoed zone.
+		}
 		res.SetTsig(p.key, gssAlgorithm, 300, time.Now().Unix())
 	}
 	if err := w.WriteMsg(res); err != nil {
@@ -228,7 +234,7 @@ func TestADWireSignedAtomicUpdatesPreserveOtherTXT(t *testing.T) {
 			continue
 		}
 		updates++
-		if req.IsTsig() == nil || len(req.Answer) != 4 || len(req.Ns) != 2 {
+		if req.IsTsig() == nil || len(req.Answer) != 2+2*updates || len(req.Ns) != 2 {
 			t.Fatal("missing signed atomic two-name prerequisites")
 		}
 	}
@@ -303,4 +309,36 @@ func TestADResolverViewsCannotUseAliasOrSingleTXTWithMultipleValues(t *testing.T
 		t.Fatal(err)
 	}
 	_ = f
+}
+
+func TestDNSTCPCancellationClosesBlockedExchange(t *testing.T) {
+	entered, finish := make(chan struct{}), make(chan struct{})
+	address := startDNS(t, dns.HandlerFunc(func(_ dns.ResponseWriter, _ *dns.Msg) {
+		close(entered)
+		<-finish
+	}), nil)
+	defer close(finish)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		m := new(dns.Msg)
+		m.SetQuestion("_acme-challenge.router.example.test.", dns.TypeTXT)
+		_, err := exchangeTCP(ctx, &dns.Client{Net: "tcp", Timeout: 10 * time.Second}, m, address)
+		done <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("query did not arrive")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("cancellation lost", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation waited for the exchange timeout")
+	}
 }

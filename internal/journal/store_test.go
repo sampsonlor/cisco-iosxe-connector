@@ -387,7 +387,14 @@ func TestSingleInstanceCrashAndWALRecovery(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := ready(t, s)
-		_, _ = s.ImportOnce(context.Background(), r.Ref(), r.CertificateSHA256, func(context.Context, Record) error { fmt.Println("READY"); select {} })
+		_, _ = s.ImportOnce(context.Background(), r.Ref(), r.CertificateSHA256, func(context.Context, Record) error {
+			fmt.Println("READY")
+			// Keep a live timer while the parent checks the OS lock and kills us.
+			// A bare select{} can trigger runtime deadlock termination first,
+			// inadvertently testing an already released lock on Windows.
+			time.Sleep(30 * time.Second)
+			return errors.New("synthetic child lifetime exceeded")
+		})
 		return
 	}
 	path := filepath.Join(t.TempDir(), "journal.sqlite")

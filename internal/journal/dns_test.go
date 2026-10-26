@@ -44,7 +44,7 @@ func TestDNSClaimsBindIntentAndRecoverOnlyRecordedValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claim.Stage != DNSInspecting || claim.Value != q.Value || claim.OwnerName != "_acme-challenge.router.example.test." || claim.MarkerName != "_ilm-acme-owner._acme-challenge.router.example.test." || claim.Marker == "" {
+	if claim.Stage != DNSInspecting || claim.Request.Value != q.Value || claim.OwnerName != "_acme-challenge.router.example.test." || claim.MarkerName != "_ilm-acme-owner._acme-challenge.router.example.test." || claim.Marker == "" {
 		t.Fatal("invalid ownership intent")
 	}
 	again, err := s.PrepareDNS(ctx, q, b)
@@ -67,7 +67,7 @@ func TestDNSClaimsBindIntentAndRecoverOnlyRecordedValue(t *testing.T) {
 	}
 	defer s.Close()
 	stored, err := s.DNSClaim(ctx, q)
-	if err != nil || stored.Marker != claim.Marker || stored.Value != claim.Value || stored.Stage != DNSAdding {
+	if err != nil || stored.Marker != claim.Marker || stored.Request.Value != claim.Request.Value || stored.Stage != DNSAdding {
 		t.Fatal("restart lost exact value/intent", err)
 	}
 	if _, err := s.ProgressDNS(ctx, q, claim.Revision-1, DNSActive, true); !errors.Is(err, ErrConflict) {

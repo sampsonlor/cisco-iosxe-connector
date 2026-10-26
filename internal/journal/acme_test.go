@@ -175,6 +175,9 @@ func TestACMEJournalRejectsUnownedMissingCSRAndUnsafeResources(t *testing.T) {
 
 func TestACMESchemaMigrationAndMissingArtifacts(t *testing.T) {
 	s, path, services, r, material := acmeOperation(t)
+	if _, err := s.db.Exec("DROP TABLE dns_claims"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.db.Exec("DROP TABLE acme_operations"); err != nil {
 		t.Fatal(err)
 	}
