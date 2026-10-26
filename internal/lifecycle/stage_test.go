@@ -139,7 +139,10 @@ func newStageFixtureOwner(t *testing.T, owner journal.Owner) *stageFixture {
 		n := time.Now().UTC()
 		return certpolicy.TimeReading{Now: n, ObservedAt: n, Synchronized: true}, nil
 	}), validationEvidence(func(_ context.Context, ref string) (certpolicy.EnrollmentEvidence, error) {
-		n := time.Now().UTC()
+		// This fixture models a snapshot captured before validation begins.
+		// Reading wall time here would place ObservedAt after the validator's
+		// zero-uncertainty clock reading on high-resolution platforms.
+		n := now
 		return certpolicy.EnrollmentEvidence{Reference: ref, SnapshotSHA256: strings.Repeat("d", 64), PolicySHA256: f.v.Digest(), RAProfileID: p.RAProfileID, AuthorityID: p.AuthorityID, PrincipalRef: p.PrincipalRef, IssuerSHA256: p.IssuerSHA256[0], Template: p.Template, ObservedAt: n, ValidUntil: n.Add(time.Hour), RABindingVerified: true, Published: true, CAReadTemplate: true, CARequestCertificates: true, TemplateRead: true, TemplateEnroll: !f.denied, SubjectSupplyAllowed: true, SANSupplyAllowed: true}, nil
 	}))
 	stageMust(t, err)
