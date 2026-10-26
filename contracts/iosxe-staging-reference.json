@@ -1,0 +1,20 @@
+{
+  "scope": "Reviewed public command and immutable 26.1 model references; actual target image prompts and write behavior require private acceptance.",
+  "repository": "YangModels/yang",
+  "commit": "7cb93ea27b7ee86ad3dd9f82998146aa838d13b8",
+  "files": [
+    {"path":"vendor/cisco/xe/2611/Cisco-IOS-XE-rpc.yang","gitBlob":"99d5a5371100b66238d0e8999ea2c75abdeb634a","url":"https://github.com/YangModels/yang/blob/7cb93ea27b7ee86ad3dd9f82998146aa838d13b8/vendor/cisco/xe/2611/Cisco-IOS-XE-rpc.yang"},
+    {"path":"vendor/cisco/xe/2611/Cisco-IOS-XE-crypto-rpc.yang","gitBlob":"c7d8b89758c3879054349aedfd238509b42fde16","url":"https://github.com/YangModels/yang/blob/7cb93ea27b7ee86ad3dd9f82998146aa838d13b8/vendor/cisco/xe/2611/Cisco-IOS-XE-crypto-rpc.yang"}
+  ],
+  "commands": [
+    {"url":"https://www.cisco.com/c/en/us/support/docs/security-vpn/public-key-infrastructure-pki/220422-configure-ca-signed-certificates-with-io.html","documentId":"220422","exampleImage":"17.11.1a","reviewedSections":["crypto pki authenticate","crypto pki import","Authenticating One or More Intermediate Certificates"]},
+    {"url":"https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/security/a1/sec-a1-cr-book/sec-cr-c5.html","reviewedSections":["crypto pki authenticate","crypto pki import"]}
+  ],
+  "observations": [
+    "The crypto RPC import/certificate leaf is type empty; PKCS12 fields carry URL/password and the enclosing output is a generic string. No inline public-DER payload transaction is established by this model.",
+    "The constrained SSH adapter authenticates one immediate CA on the existing CSR Trustpoint and then imports its public identity certificate. No key import or PKCS12 path is used.",
+    "Higher CA certificates require separate preprovisioned protected Trustpoints, exact DER and an explicit digest-to-Trustpoint mapping. No ancestor mutation is performed.",
+    "A second identity import can prompt for overwrite. The implementation refuses replacement/overwrite rather than confirming it.",
+    "Command examples are evidence for the bounded dialect, not acceptance of the actual 26.01.02 device. Exact prompts, chain lookup, NTP, ACLs, baseline TLS and recovery remain L-002."
+  ]
+}

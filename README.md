@@ -8,7 +8,7 @@ ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
 **Status: read-only Provider, SQLite metadata/journal, NETCONF/SSH reads,
 certificate inventory, opt-in CSR library, certificate validation and resumable
-external-CSR ACME and restricted AD DNS-01 libraries. There is
+external-CSR ACME, restricted AD DNS-01 and inactive certificate staging libraries. There is
 no deployable renewal service yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
@@ -47,27 +47,31 @@ models and ILM Core integration still require their own live evidence.
 The [operation journal and shared import gate](docs/durable-journal.md) implement
 durable service ownership, request/operation correlation and commit-before-dispatch
 with SQLite WAL. Counting-importer tests cover concurrency, storage failure and
-crash recovery of intent. Live acceptance, inactive import and activation are
-future milestones; the read-only HTTP Provider does not enable writes.
+crash recovery of intent. The [runtime staging gate](docs/stage-only.md) adds
+fresh policy/key/TLS checks and read-only recovery of a completed import.
+Live acceptance and activation retain their own gates; the HTTP Provider does not enable writes.
 
 [Device CSR components](docs/device-csr.md) now provide a separate opt-in,
 pinned SSH adapter, public CSR/key validation and durable generation intent.
 Offline SSH/SQLite tests cover this path; actual target write acceptance remains
-private. HTTP lifecycle wiring, inactive import and activation follow
+private. HTTP lifecycle wiring and activation follow
 their own milestones.
 
 [Certificate acceptance policy](docs/certificate-policy.md) now validates saved
 CSRs, identity/purpose/time, pinned CA paths and AD CS template/enrollment evidence
 before durable CERT_READY. Its private evidence source remains a trusted host
 dependency; offline snapshots do not prove live AD permissions. Import and
-activation require their own device and policy rechecks.
+activation require their own device and policy rechecks. The
+[stage-only importer](docs/stage-only.md) provides those import rechecks,
+public-certificate CLI dialogue and SQLite v5 recovery. Actual image acceptance
+remains private #15; native Core CSR/push wiring remains #13.
 
 The [external-CSR ACME workflow](docs/acme-external-csr.md) adds account/order
 association, bounded retries and recovery through the original order. Synthetic
 HTTPS tests verify real JWS and exact CSR bytes. The
 [Microsoft AD DNS backend](docs/ad-dns01.md) adds Kerberos/GSS-TSIG updates,
-SQLite v4 ownership, exact TXT cleanup and cancellation recovery. ILM 2.19.0
-defaults to single-TXT validation mode; concurrent-value validation requires
+SQLite v4 ownership, exact TXT cleanup and cancellation recovery. For ILM 2.19.0,
+the backend defaults to single-TXT mode; concurrent-value validation requires
 private evidence. These libraries do not expose live issuance or device deployment
 through the HTTP Provider or a new executable.
 

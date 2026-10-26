@@ -20,15 +20,17 @@ import (
 // Store is shared by all API and worker entry points in one active process.
 // The OS lock is on the database file itself, not a deletable PID/lease file.
 type Store struct {
-	db       *sql.DB
-	file     *os.File
-	services map[string]Service
-	mu       sync.RWMutex
-	closed   bool
-	acmeMu   sync.Mutex
-	acmeJobs map[string]bool
-	dnsMu    sync.Mutex
-	dnsJobs  map[string]bool
+	db        *sql.DB
+	file      *os.File
+	services  map[string]Service
+	mu        sync.RWMutex
+	closed    bool
+	acmeMu    sync.Mutex
+	acmeJobs  map[string]bool
+	dnsMu     sync.Mutex
+	dnsJobs   map[string]bool
+	stageMu   sync.Mutex
+	stageJobs map[string]bool
 }
 
 func Open(path string, services []Service) (*Store, error) {
@@ -128,7 +130,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return ErrStore
 	}
-	if app != applicationID || (version != 1 && version != 2 && version != 3 && version != 4) {
+	if app != applicationID || (version != 1 && version != 2 && version != 3 && version != 4 && version != 5) {
 		if app != 0 || version != 0 {
 			return ErrStore
 		}
@@ -197,6 +199,20 @@ func (s *Store) initialize() error {
 		}); err != nil {
 			return err
 		}
+		version = 4
+	}
+	if version == 4 {
+		if err := s.transaction(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, "CREATE TABLE staging_operations (operation_id TEXT PRIMARY KEY REFERENCES operations(id), settings_sha256 TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>0), record TEXT NOT NULL)"); err != nil {
+				return ErrStore
+			}
+			if _, err := tx.ExecContext(ctx, "PRAGMA user_version=5"); err != nil {
+				return ErrStore
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 	var mode, integrity string
 	var syncMode int
@@ -226,6 +242,9 @@ func (s *Store) initialize() error {
 		return err
 	}
 	if err := s.checkDNSStorage(ctx); err != nil {
+		return err
+	}
+	if err := s.checkStageStorage(ctx); err != nil {
 		return err
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {

@@ -2,12 +2,14 @@
 
 `internal/journal` persists operation correlation, state transitions and HTTPS
 service ownership in a dedicated SQLite database. `internal/lifecycle.ImportGate`
-is the shared internal API/worker import entry point. The import gate uses a
-counting test adapter; real import, private issuance acceptance, scheduling and HTTP lifecycle
-wiring remain later milestones. The read-only Provider returns 501 for mutations.
+is the digest-only foundation harness. The [runtime StageGate](stage-only.md)
+now supplies shared API/worker staging with fresh policy and independent device/TLS
+evidence; native HTTP lifecycle wiring, private acceptance and scheduling remain
+later milestones. The read-only Provider returns 501 for mutations.
 The subsequent [CSR component](device-csr.md) adds schema v2 public CSR artifacts,
-atomic generation intent/result recording and an opt-in SSH adapter; the import
-adapter and activation paths remain future work.
+atomic generation intent/result recording and an opt-in SSH adapter. An
+[inactive public-certificate adapter](stage-only.md) now implements import;
+activation retains a separate gate.
 The [certificate gate](certificate-policy.md) now binds a validated leaf to the
 recorded CSR and approved issuance policy before CERT_READY.
 The [external-CSR ACME workflow](acme-external-csr.md) adds schema v3 public
@@ -15,6 +17,9 @@ account/order association, separate CAS progress and retry timestamps. It keeps
 the original CSR and order across timeouts/restarts. The [AD DNS backend](ad-dns01.md)
 adds schema v4 challenge ownership, separate markers and CAS update/cleanup
 intents. Actual KDC/AD DNS and resolver acceptance remains private #15.
+The [staging runtime](stage-only.md) adds schema v5 immutable public leaf/path,
+effective adapter settings and unrelated-state baseline, with narrow read-only
+reconciliation of a previously committed IMPORTING intent.
 
 ## Ownership and correlation
 
@@ -73,9 +78,10 @@ and [synchronous semantics](https://www.sqlite.org/pragma.html#pragma_synchronou
 Only a PRECHECK with no mutation intent can be aborted and release service
 ownership. KEY_CREATING, unresolved IMPORTING and STAGED retain ownership across
 close, restart and elapsed time. There is no TTL that lets a second worker enter
-while a previous device operation might still be running. Activation, rollback,
-verified reconciliation and their terminal states will extend this schema in
-their own milestones; they are not synthesized by this journal.
+while a previous device operation might still be running. Activation, rollback and
+their terminal states will extend this schema in their own milestones. Import
+reconciliation now requires StageGate's exact current evidence before STAGED;
+it never resets an uncertain intent for another dispatch.
 
 ## Import gate
 
@@ -84,7 +90,7 @@ sequenceDiagram
     participant Caller as API / worker
     participant Gate as Shared ImportGate
     participant DB as Journal
-    participant Importer as Later validated import adapter
+    participant Importer as Foundation counting adapter
     Caller->>Gate: operation reference + validated certificate digest
     Gate->>DB: Validate correlation; commit IMPORTING + event
     alt Intent commit fails
@@ -112,8 +118,8 @@ operations with a recorded CSR. Runtime `CertificateValidated` requires a fresh
 opaque certificate-policy receipt matching the saved CSR and approved policy,
 and atomically commits CERT_READY with its history. The shared certificate gate
 revalidates time and enrollment evidence even on repeated acceptance. No receipt
-or permission grant is restored from SQLite. Before production import, #12 must
-recheck the actual leaf/policy evidence, device key and baseline. The importer must
+or permission grant is restored from SQLite. The runtime StageGate rechecks the
+actual leaf/policy evidence, device key and baseline before import. The importer must
 honor context deadlines and return only when it has stopped issuing requests; it
 must not start detached background writes or call `Store.Close` itself.
 

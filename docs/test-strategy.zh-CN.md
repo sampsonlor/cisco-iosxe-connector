@@ -8,14 +8,16 @@
 `implemented` 表示有可执行测试，`planned` 表示验收目标仍待实现。
 现已实现操作 Journal 与共享导入门控，覆盖真实临时 SQLite 的服务锁、
 幂等关联、先保存意图再调用导入、崩溃后保留未决意图。详见
-[持久日志与范围](durable-journal.md)。导入器目前是计数测试替身，实际
-IOS XE 导入和 HTTP 生命周期接入仍在后续任务。
+[持久日志与范围](durable-journal.md)。[StageGate 与受限导入器](stage-only.md)
+已实现公共证书 SSH 对话、SQLite v5、实际 loopback TLS、权限/取消竞争、
+独立库存校验及只读对账；#7 的计数门控保留作基础测试。实机 IOS XE 导入验收
+和原生 HTTP 生命周期接入分别留在 #15 与 #13。
 设备 CSR 的受限适配器、持久公共产物和离线 SSH 测试已实现；
 [证书策略校验](certificate-policy.md)已覆盖 CSR/服务身份、CA 链、模板及可信权限快照。
 [外部 CSR 的 ACME 流程](acme-external-csr.md)已覆盖签名 HTTPS、订单/账户关联、
 nonce、持久退避、响应丢失恢复；[AD DNS-01 后端](ad-dns01.md)加入 SQLite v4
 所有权、GSS-TSIG 报文、原子更新、精确 TXT 清理和调用方取消恢复测试。
-loopback MIC 用于验证报文边界，不构成实际 KDC 认证证明；ILM 2.19.0 默认单 TXT，
+loopback MIC 用于验证报文边界，不构成实际 KDC 认证证明；连接器面向 ILM 2.19.0 默认采用单 TXT，
 多值验证与实际 DNS ACL/解析视图留到 #15。公共 CI 不连接域环境。
 实机写入和实际 AD 权限证据仍由私有阶段验收核实。
 CI 通过不等于所有清单用例通过，也不等于已完成生产自动续期。

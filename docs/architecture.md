@@ -13,8 +13,9 @@ CSR, identity/purpose/time, pinned chain and trusted template/permission evidenc
 before CERT_READY. The [ACME library](acme-external-csr.md) reuses the saved CSR
 and original order with bounded protocol/recovery tests. The
 [AD DNS backend](ad-dns01.md) implements native GSS-TSIG and durable exact-value
-cleanup. Private DNS/issuance acceptance, import, activation and an authenticated
-host remain planned.
+cleanup. The [StageGate and opt-in importer](stage-only.md) now verify inactive
+deployment with fresh policy, device-key and baseline TLS evidence. Private
+acceptance, activation and an authenticated host remain planned.
 Names and network details below are synthetic.
 
 ```mermaid
