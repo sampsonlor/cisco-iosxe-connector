@@ -146,7 +146,7 @@ func TestCSRStorageAndUnknownOutcomeBlockRegeneration(t *testing.T) {
 func TestCSRSchemaMigrationPreservesLegacyOperations(t *testing.T) {
 	s, path := openTest(t)
 	r := begin(t, s)
-	for _, table := range []string{"dns_claims", "acme_operations", "acme_accounts"} {
+	for _, table := range []string{"staging_operations", "dns_claims", "acme_operations", "acme_accounts"} {
 		if _, err := s.db.Exec("DROP TABLE " + table); err != nil {
 			t.Fatal(err)
 		}
@@ -168,7 +168,7 @@ func TestCSRSchemaMigrationPreservesLegacyOperations(t *testing.T) {
 		t.Fatal("migration changed legacy operation", err)
 	}
 	var v int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&v); err != nil || v != 4 {
+	if err := s.db.QueryRow("PRAGMA user_version").Scan(&v); err != nil || v != 5 {
 		t.Fatal("schema not upgraded", err)
 	}
 	bad := csrSpec()

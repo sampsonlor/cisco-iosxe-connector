@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/journal"
 	"github.com/sampsonlor/cisco-iosxe-connector/internal/lab"
@@ -136,5 +137,94 @@ func TestStageRuntimeCannotUseDigestOnlyImportGate(t *testing.T) {
 	_, err = gate.Stage(context.Background(), f.r.Ref(), f.r.CertificateSHA256, importerFunc(func(context.Context, journal.Record) error { calls++; return nil }))
 	if !errors.Is(err, journal.ErrState) || calls != 0 {
 		t.Fatal("runtime CSR bypassed validated stage gate", err)
+	}
+}
+
+func TestStageACMECancellationIsCheckedBeforeRealDispatch(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		t.Run(map[bool]string{false: "before-stage", true: "at-dispatch"}[late], func(t *testing.T) {
+			f := newStageFixtureOwner(t, journal.ACMEWorker)
+			if late {
+				db, err := sql.Open("sqlite", f.path)
+				stageMust(t, err)
+				defer db.Close()
+				f.backend.before = func() {
+					_, err := db.Exec("UPDATE acme_operations SET record=json_set(record,'$.Revision',revision+1,'$.CancelRequested',json('true')),revision=revision+1 WHERE operation_id=?", f.r.ID)
+					stageMust(t, err)
+				}
+			} else {
+				flow, err := f.s.ACMEStatus(context.Background(), f.r.Ref())
+				stageMust(t, err)
+				flow.CancelRequested = true
+				_, err = f.s.SaveACME(context.Background(), f.r.Ref(), flow.Revision, flow)
+				stageMust(t, err)
+			}
+			got, err := f.gate.Stage(context.Background(), f.r.Ref(), f.leaf, nil)
+			if err == nil || got.WithKey || f.backend.imports != 0 {
+				t.Fatal("cancelled ACME operation dispatched staging", err)
+			}
+		})
+	}
+}
+
+func TestStageV4MigrationAndMissingArtifactsFailClosed(t *testing.T) {
+	f := newStageFixture(t)
+	db, err := sql.Open("sqlite", f.path)
+	stageMust(t, err)
+	defer db.Close()
+	_, err = db.Exec("DROP TABLE staging_operations")
+	stageMust(t, err)
+	_, err = db.Exec("PRAGMA user_version=4")
+	stageMust(t, err)
+	stageMust(t, f.s.Close())
+	f.s, err = journal.Open(f.path, f.services)
+	stageMust(t, err)
+	f.rewire(t)
+	got, err := f.s.Get(context.Background(), f.r.Ref())
+	stageMust(t, err)
+	if got != f.r {
+		t.Fatal("migration replaced original certificate operation")
+	}
+	_, err = f.gate.Stage(context.Background(), f.r.Ref(), f.leaf, nil)
+	stageMust(t, err)
+	_, err = db.Exec("DELETE FROM staging_operations")
+	stageMust(t, err)
+	stageMust(t, f.s.Close())
+	if s, err := journal.Open(f.path, f.services); err == nil {
+		s.Close()
+		t.Fatal("staged CSR without import provenance admitted")
+	}
+}
+
+func TestStageCloseWaitsThroughDispatchRecheckAndCompletion(t *testing.T) {
+	f := newStageFixture(t)
+	f.backend.entered = make(chan struct{})
+	f.backend.finish = make(chan struct{})
+	done := make(chan error, 1)
+	go func() { _, err := f.gate.Stage(context.Background(), f.r.Ref(), f.leaf, nil); done <- err }()
+	<-f.backend.entered
+	closed := make(chan error, 1)
+	go func() { closed <- f.s.Close() }()
+	select {
+	case err := <-closed:
+		t.Fatal("close released dispatched import", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(f.backend.finish)
+	select {
+	case err := <-done:
+		stageMust(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("close deadlocked the dispatch recheck")
+	}
+	stageMust(t, <-closed)
+	var err error
+	f.s, err = journal.Open(f.path, f.services)
+	stageMust(t, err)
+	f.rewire(t)
+	got, err := f.gate.Stage(context.Background(), f.r.Ref(), f.leaf, nil)
+	stageMust(t, err)
+	if !got.WithKey || f.backend.imports != 1 {
+		t.Fatal("close/restart repeated import")
 	}
 }

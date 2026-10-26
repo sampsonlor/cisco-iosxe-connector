@@ -104,6 +104,9 @@ type stageFixture struct {
 }
 
 func newStageFixture(t *testing.T) *stageFixture {
+	return newStageFixtureOwner(t, journal.ILMCore)
+}
+func newStageFixtureOwner(t *testing.T, owner journal.Owner) *stageFixture {
 	f := &stageFixture{}
 	now := time.Now().UTC().Truncate(time.Second)
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -141,7 +144,7 @@ func newStageFixture(t *testing.T) *stageFixture {
 	}))
 	stageMust(t, err)
 	id := uuid.NewString()
-	b := journal.Binding{EntityID: id, LocationID: provider.HTTPSLocationID(id), DeviceID: "router-a", Target: "192.0.2.10", HostKeySHA256: "SHA256:" + base64.RawStdEncoding.EncodeToString(make([]byte, 32)), PolicySHA256: f.v.Digest(), Owner: journal.ILMCore}
+	b := journal.Binding{EntityID: id, LocationID: provider.HTTPSLocationID(id), DeviceID: "router-a", Target: "192.0.2.10", HostKeySHA256: "SHA256:" + base64.RawStdEncoding.EncodeToString(make([]byte, 32)), PolicySHA256: f.v.Digest(), Owner: owner}
 	f.services = []journal.Service{{Binding: b, StagingTrustpoints: []string{"HTTPS-STAGE-A"}}}
 	f.path = filepath.Join(t.TempDir(), "journal.sqlite")
 	f.s, err = journal.Open(f.path, f.services)
@@ -150,12 +153,32 @@ func newStageFixture(t *testing.T) *stageFixture {
 	stageMust(t, err)
 	f.r, _, err = f.s.GenerateCSR(context.Background(), f.r.Ref(), f.spec, func(context.Context, csr.Request) (csr.Result, error) { return f.material, nil })
 	stageMust(t, err)
-	f.r, err = f.s.Progress(context.Background(), f.r.Ref(), f.r.Revision, journal.AwaitingIssuance)
+	var flow journal.ACMERecord
+	if owner == journal.ACMEWorker {
+		f.r, _, _, flow, err = f.s.BeginACME(context.Background(), f.r.Ref(), journal.ACMEBinding{DirectoryURL: "https://acme.example.test/profile/test/directory", AccountKeyRef: "secret://account/test", AccountKeySHA256: strings.Repeat("c", 64), TLSBundleRef: "bundle://test/root", SettingsSHA256: strings.Repeat("d", 64)})
+	} else {
+		f.r, err = f.s.Progress(context.Background(), f.r.Ref(), f.r.Revision, journal.AwaitingIssuance)
+	}
 	stageMust(t, err)
 	cg, err := lifecycle.NewCertificateGate(f.s, f.v)
 	stageMust(t, err)
 	f.r, _, err = cg.Accept(context.Background(), f.r.Ref(), f.leaf, nil)
 	stageMust(t, err)
+	if owner == journal.ACMEWorker {
+		for _, stage := range []journal.ACMEStage{journal.ACMECreating, journal.ACMEBound, journal.ACMEFinalizing, journal.ACMEIssued} {
+			flow.Stage = stage
+			if stage == journal.ACMEBound {
+				flow.OrderURL = "https://acme.example.test/profile/test/order/one"
+				flow.FinalizeURL = flow.OrderURL + "/finalize"
+				flow.AuthorizationURLs = []string{"https://acme.example.test/profile/test/auth/one"}
+			}
+			if stage == journal.ACMEIssued {
+				flow.CertificateURL = "https://acme.example.test/profile/test/cert/one"
+			}
+			flow, err = f.s.SaveACME(context.Background(), f.r.Ref(), flow.Revision, flow)
+			stageMust(t, err)
+		}
+	}
 	f.backend = &stageBackend{obs: staging.Observation{ActiveTrustpoint: "HTTPS-LIVE", ActiveDER: f.baseline, PublicKeyDER: f.material.PublicKeyDER, NonExportable: true, OtherStateSHA256: strings.Repeat("f", 64)}}
 	f.rewire(t)
 	t.Cleanup(func() { f.s.Close() })

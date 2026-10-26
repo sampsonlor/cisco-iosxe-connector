@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"strings"
@@ -262,5 +261,41 @@ func TestStageSSHDispatchAuthorizationStopsBeforeWrites(t *testing.T) {
 		t.Fatal("denied dispatch mutated device", err)
 	}
 	assertNoStageActivation(t, f.logs())
-	_ = fmt.Sprint(q.CSR.OperationID)
+}
+
+func TestStageSSHIdentityScopeAndExplicitWritePolicy(t *testing.T) {
+	for _, mode := range []string{"target", "host-key", "trustpoint-injection", "policy", "wrong-leaf"} {
+		t.Run(mode, func(t *testing.T) {
+			f, a, q, count := stageWire(t, "")
+			switch mode {
+			case "target":
+				q.CSR.Target = "192.0.2.11"
+			case "host-key":
+				q.CSR.HostKeySHA256 = "SHA256:unapproved"
+			case "trustpoint-injection":
+				q.CSR.Trustpoint = "HTTPS-STAGE-A;write memory"
+			case "policy":
+				q.CSR.PolicySHA256 = strings.Repeat("b", 64)
+			case "wrong-leaf":
+				q.LeafDER = q.ChainDER[1]
+			}
+			if err := a.Import(context.Background(), q, func(context.Context) error { return nil }); err == nil || f.auth.Load() != 0 || count.Load() != 0 {
+				t.Fatal("unsafe target reached authentication or write", err)
+			}
+		})
+	}
+	f, a, q, _ := stageWire(t, "")
+	p := a.policies[q.CSR.DeviceID]
+	p.AllowWrites = false
+	if _, err := NewStageAdapter(a.client, map[string]StagePolicy{q.CSR.DeviceID: p}, a.verify); err == nil {
+		t.Fatal("default-disabled writes enabled")
+	}
+	p.AllowWrites = true
+	p.Ancestors = map[string]string{strings.Repeat("a", 64): "UNAPPROVED-ROOT"}
+	if _, err := NewStageAdapter(a.client, map[string]StagePolicy{q.CSR.DeviceID: p}, a.verify); err == nil {
+		t.Fatal("unprotected ancestor accepted")
+	}
+	if f.auth.Load() != 0 {
+		t.Fatal("constructor validation authenticated")
+	}
 }
