@@ -11,7 +11,9 @@
 [持久日志与范围](durable-journal.md)。[StageGate 与受限导入器](stage-only.md)
 已实现公共证书 SSH 对话、SQLite v5、实际 loopback TLS、权限/取消竞争、
 独立库存校验及只读对账；#7 的计数门控保留作基础测试。实机 IOS XE 导入验收
-和原生 HTTP 生命周期接入分别留在 #15 与 #13。
+留在 #15；[原生 HTTP 生命周期](native-core-lifecycle.md)已接入同一门控，
+覆盖 SDK、SQLite、公共 CSR/证书与实际策略/StageGate 的离线联合测试。
+C-009 的真实 ILM 2.19.0 生命周期验收仍留在 #15。
 设备 CSR 的受限适配器、持久公共产物和离线 SSH 测试已实现；
 [证书策略校验](certificate-policy.md)已覆盖 CSR/服务身份、CA 链、模板及可信权限快照。
 [外部 CSR 的 ACME 流程](acme-external-csr.md)已覆盖签名 HTTPS、订单/账户关联、

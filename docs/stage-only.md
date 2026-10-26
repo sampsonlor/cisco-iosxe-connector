@@ -3,8 +3,9 @@
 `lifecycle.StageGate` imports a validated public certificate into the existing,
 operation-owned CSR Trustpoint and stops at STAGED. `NewIOSXEStageGate` wires the
 real inventory verifier, opt-in pinned SSH adapter and independent TLS probe.
-The public Entity Provider remains read-only; native CSR/push wiring follows
-#13 and the credential/service host follows #14. Actual router acceptance is #15.
+The default Entity Provider remains read-only; the opt-in
+[native CSR/push adapter](native-core-lifecycle.md) now reuses this gate.
+The credential/service host follows #14. Actual router acceptance is #15.
 
 ## Reviewed transport and CA layout
 
@@ -169,7 +170,8 @@ dialogues, separately parsed complete inventory, fresh loopback TLS, permission
 and ACME-cancellation races, storage fault injection, concurrent calls, shutdown
 and restart. Packet/semantic/gate tests are separate layers; they establish no
 actual IOS XE write or ILM lifecycle compatibility. S-007's Core DTO integration
-and C-009 remain #13; private stage-only acceptance remains #15/L-002.
+is covered by the native adapter's joint test; C-009 and private stage-only
+acceptance remain #15/L-002.
 
 Before the first real write, finish the deferred NTP check, confirm the exact
 image/prompt dialect and reserved CSR configuration, pin recovery access, verify

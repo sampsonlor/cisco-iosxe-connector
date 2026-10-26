@@ -139,6 +139,15 @@ func (v *Validator) chain(leaf *x509.Certificate, returned [][]byte, clock TimeR
 	return nil, ErrChain
 }
 
+// AllowsCSR rejects host configuration drift before device key generation.
+func (v *Validator) AllowsCSR(spec csr.Spec) bool {
+	if v == nil {
+		return false
+	}
+	normalized, err := csr.Normalize(spec)
+	return err == nil && sameSpec(normalized, v.p.Spec)
+}
+
 // Validate performs no I/O beyond the trusted clock/evidence providers. It
 // rechecks both on every call, including retries for a previously seen leaf.
 func (v *Validator) Validate(ctx context.Context, material csr.Result, spec csr.Spec, leafDER []byte, returnedChain [][]byte) (Result, error) {

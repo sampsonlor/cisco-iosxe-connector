@@ -4,7 +4,7 @@
 service ownership in a dedicated SQLite database. `internal/lifecycle.ImportGate`
 is the digest-only foundation harness. The [runtime StageGate](stage-only.md)
 now supplies shared API/worker staging with fresh policy and independent device/TLS
-evidence; native HTTP lifecycle wiring, private acceptance and scheduling remain
+evidence; private acceptance and scheduling remain
 later milestones. The read-only Provider returns 501 for mutations.
 The subsequent [CSR component](device-csr.md) adds schema v2 public CSR artifacts,
 atomic generation intent/result recording and an opt-in SSH adapter. An

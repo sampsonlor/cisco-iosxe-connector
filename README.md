@@ -8,7 +8,8 @@ ILM **2.19.0**, Microsoft AD CS and device-generated, non-exportable keys.
 
 **Status: read-only Provider, SQLite metadata/journal, NETCONF/SSH reads,
 certificate inventory, opt-in CSR library, certificate validation and resumable
-external-CSR ACME, restricted AD DNS-01 and inactive certificate staging libraries. There is
+external-CSR ACME, restricted AD DNS-01, inactive certificate staging and opt-in
+native Core CSR/push integration. There is
 no deployable renewal service yet.** A passing CI run validates
 only the implemented checks, not IOS XE renewal or SDK compatibility
 with every ILM 2.19.0 feature. This project is not affiliated with Cisco or
@@ -49,13 +50,14 @@ durable service ownership, request/operation correlation and commit-before-dispa
 with SQLite WAL. Counting-importer tests cover concurrency, storage failure and
 crash recovery of intent. The [runtime staging gate](docs/stage-only.md) adds
 fresh policy/key/TLS checks and read-only recovery of a completed import.
-Live acceptance and activation retain their own gates; the HTTP Provider does not enable writes.
+Live acceptance and activation retain their own gates. The default HTTP Provider
+is read-only; the opt-in native handler requires an explicit authorizing host.
 
 [Device CSR components](docs/device-csr.md) now provide a separate opt-in,
 pinned SSH adapter, public CSR/key validation and durable generation intent.
 Offline SSH/SQLite tests cover this path; actual target write acceptance remains
-private. HTTP lifecycle wiring and activation follow
-their own milestones.
+private. The [native Core lifecycle](docs/native-core-lifecycle.md) wires HTTP
+CSR/push to these gates; activation follows its own milestone.
 
 [Certificate acceptance policy](docs/certificate-policy.md) now validates saved
 CSRs, identity/purpose/time, pinned CA paths and AD CS template/enrollment evidence
@@ -64,7 +66,8 @@ dependency; offline snapshots do not prove live AD permissions. Import and
 activation require their own device and policy rechecks. The
 [stage-only importer](docs/stage-only.md) provides those import rechecks,
 public-certificate CLI dialogue and SQLite v5 recovery. Actual image acceptance
-remains private #15; native Core CSR/push wiring remains #13.
+remains private #15. The [native Core CSR/push adapter](docs/native-core-lifecycle.md)
+reuses the same gates, durable operation correlation and owner exclusion.
 
 The [external-CSR ACME workflow](docs/acme-external-csr.md) adds account/order
 association, bounded retries and recovery through the original order. Synthetic
@@ -73,7 +76,9 @@ HTTPS tests verify real JWS and exact CSR bytes. The
 SQLite v4 ownership, exact TXT cleanup and cancellation recovery. For ILM 2.19.0,
 the backend defaults to single-TXT mode; concurrent-value validation requires
 private evidence. These libraries do not expose live issuance or device deployment
-through the HTTP Provider or a new executable.
+through the default read-only HTTP Provider or a new executable. An explicitly
+authenticated native handler can stage Core-issued leaves; a deployable host,
+actual ILM acceptance and activation remain separate work.
 
 ## Local checks
 
@@ -88,8 +93,8 @@ go vet ./...
 go test -race -count=1 ./...
 ```
 
-The Go tests exercise the official SDK, connector boundary and read-only
-Provider through in-process HTTP, real temporary SQLite files and synthetic
+The Go tests exercise the official SDK, connector boundary, read-only Provider
+and native CSR/push handler through in-process HTTP, real temporary SQLite files and synthetic
 inventory readers, plus loopback HTTPS ACME and TCP DNS servers. They never contact a real
 router, CA, DNS service or ILM instance; all signing/keys are synthetic test data.
 Planned acceptance cases remain explicitly `planned` in the catalog; they
