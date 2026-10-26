@@ -80,6 +80,7 @@ func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 		return nil, err
 	}
 	groups := map[string][]pemCertificate{}
+	unenrolled := map[string]bool{}
 	name, kind := "", ""
 	count := 0
 	for i := 0; i < len(lines); i++ {
@@ -88,14 +89,14 @@ func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 			continue
 		}
 		if m := groupHeader.FindStringSubmatch(line); m != nil {
-			if kind != "" || (name != "" && len(groups[name]) == 0) {
+			if kind != "" || (name != "" && len(groups[name]) == 0 && !unenrolled[name]) {
 				return nil, ErrIncomplete
 			}
 			name = m[1]
 			if _, ok := groups[name]; ok || len(groups) >= 64 {
 				return nil, ErrIncomplete
 			}
-			groups[name] = nil
+			groups[name] = []pemCertificate{}
 			continue
 		}
 		if name == "" {
@@ -103,6 +104,9 @@ func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 		}
 		switch strings.ToLower(line) {
 		case "% ca certificate:", "% general purpose certificate:", "% self-signed ca certificate:":
+			if unenrolled[name] && !strings.EqualFold(line, "% ca certificate:") {
+				return nil, ErrIncomplete
+			}
 			if kind != "" {
 				return nil, ErrIncomplete
 			}
@@ -121,9 +125,10 @@ func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 			continue
 		}
 		if line == "% The specified trustpoint is not enrolled ("+name+")." {
-			if len(groups[name]) != 0 || kind != "" {
+			if name == "" || len(groups[name]) != 0 || kind != "" || unenrolled[name] {
 				return nil, ErrIncomplete
 			}
+			unenrolled[name] = true
 			continue
 		}
 		if line != "-----BEGIN CERTIFICATE-----" || kind == "" {
@@ -182,8 +187,8 @@ func parsePEM(raw []byte) (map[string][]pemCertificate, error) {
 	if kind != "" || len(groups) == 0 {
 		return nil, ErrIncomplete
 	}
-	for _, certs := range groups {
-		if len(certs) == 0 {
+	for name, certs := range groups {
+		if len(certs) == 0 && !unenrolled[name] {
 			return nil, ErrIncomplete
 		}
 	}
@@ -203,13 +208,16 @@ func checkPKICLI(raw []byte, groups map[string][]pemCertificate) error {
 		}
 		if m := trustpointHeader.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 			current = m[1]
-			if seen[current] || groups[current] == nil {
+			if _, present := groups[current]; seen[current] || !present {
 				return ErrIncomplete
 			}
 			seen[current] = true
 			continue
 		}
 		// The command reference defines indented descriptive fields below each
+		if len(groups[current]) == 0 && strings.Contains(strings.ToLower(line), "certificate configured") {
+			return ErrIncomplete
+		}
 		// Trustpoint. They are not used as key proof or certificate fingerprints.
 		if current == "" || (!strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t")) {
 			return ErrUnsupported

@@ -21,6 +21,9 @@ func (c *Client) connect(ctx context.Context, t Target, ep Endpoint) (*ssh.Clien
 	if err != nil || key == nil {
 		return nil, nil, ErrPolicy
 	}
+	if c.requiredHostKey != "" && ssh.FingerprintSHA256(key) != c.requiredHostKey {
+		return nil, nil, ErrHostKey
+	}
 	credentials, err := c.resolver.Credentials(ctx, ep.CredentialRef)
 	if err != nil {
 		return nil, nil, ErrPolicy
@@ -66,15 +69,18 @@ func (c *Client) connect(ctx context.Context, t Target, ep Endpoint) (*ssh.Clien
 }
 
 var readCommands = map[Operation]string{
-	ReadVersion:        "show version",
-	ReadPKI:            "show crypto pki trustpoints",
-	ReadBinding:        "show running-config | include ^ip http secure-trustpoint",
-	ReadCertificates:   "show crypto pki certificates pem",
-	ReadHTTPSStatus:    "show ip http server status",
-	ReadClock:          "show clock detail",
-	ReadNTP:            "show ntp status",
-	ReadPrivilege:      "show privilege",
-	ReadProtocolConfig: "show running-config | include ^netconf|^restconf",
+	ReadTrustpointConfig: "show running-config | section ^crypto pki trustpoint",
+	ReadRSAKeys:          "show crypto key mypubkey rsa",
+	ReadECKeys:           "show crypto key mypubkey ec",
+	ReadVersion:          "show version",
+	ReadPKI:              "show crypto pki trustpoints",
+	ReadBinding:          "show running-config | include ^ip http secure-trustpoint",
+	ReadCertificates:     "show crypto pki certificates pem",
+	ReadHTTPSStatus:      "show ip http server status",
+	ReadClock:            "show clock detail",
+	ReadNTP:              "show ntp status",
+	ReadPrivilege:        "show privilege",
+	ReadProtocolConfig:   "show running-config | include ^netconf|^restconf",
 }
 
 type boundedOutput struct {
@@ -146,6 +152,11 @@ func (c *Client) readCLICommand(ctx context.Context, t Target, e *Evidence, op O
 	}
 	if op == ReadProtocolConfig && runErr == nil && !overflow && len(bytes.TrimSpace(raw)) == 0 {
 		err = nil
+	}
+	if (op == ReadRSAKeys || op == ReadECKeys) && runErr == nil && !overflow {
+		if _, parseErr := publicKeys(raw); parseErr == nil {
+			err = nil
+		}
 	}
 	if ctx.Err() != nil {
 		err = ctx.Err()

@@ -124,7 +124,7 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return ErrStore
 	}
-	if app != applicationID || version != 1 {
+	if app != applicationID || (version != 1 && version != 2) {
 		if app != 0 || version != 0 {
 			return ErrStore
 		}
@@ -143,6 +143,20 @@ func (s *Store) initialize() error {
 				if _, err := tx.ExecContext(ctx, statement); err != nil {
 					return ErrStore
 				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		version = 1
+	}
+	if version == 1 {
+		if err := s.transaction(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, "CREATE TABLE csr_operations (operation_id TEXT PRIMARY KEY REFERENCES operations(id), specification TEXT NOT NULL, key_label TEXT NOT NULL UNIQUE, csr_der BLOB NOT NULL, public_key_der BLOB NOT NULL)"); err != nil {
+				return ErrStore
+			}
+			if _, err := tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
+				return ErrStore
 			}
 			return nil
 		}); err != nil {
@@ -169,6 +183,9 @@ func (s *Store) initialize() error {
 		OR NOT EXISTS (SELECT 1 FROM events e WHERE e.operation_id=o.id
 		AND e.revision=1 AND e.from_state='' AND e.to_state='PRECHECK')`).Scan(&detached); err != nil || detached != 0 {
 		return ErrStore
+	}
+	if err := s.checkCSRStorage(ctx); err != nil {
+		return err
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, "SELECT location_id,configuration FROM services")

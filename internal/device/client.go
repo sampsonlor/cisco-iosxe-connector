@@ -1,4 +1,4 @@
-// Package device provides a fixed, read-only IOS XE discovery channel.
+// Package device provides pinned IOS XE discovery and a separate opt-in CSR channel.
 package device
 
 import (
@@ -81,12 +81,13 @@ type Evidence struct {
 	NETCONFHello   []byte
 }
 type Client struct {
-	observer func(Operation, []byte, bool, bool)
-	targets  map[string]Target
-	resolver Resolver
-	timeout  time.Duration
-	limit    int
-	dial     func(context.Context, string) (net.Conn, error)
+	requiredHostKey string // optional immutable fingerprint for a CSR request
+	observer        func(Operation, []byte, bool, bool)
+	targets         map[string]Target
+	resolver        Resolver
+	timeout         time.Duration
+	limit           int
+	dial            func(context.Context, string) (net.Conn, error)
 }
 
 // Option configures an operator-owned client, never an Entity request.

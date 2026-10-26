@@ -2,9 +2,12 @@
 
 `internal/journal` persists operation correlation, state transitions and HTTPS
 service ownership in a dedicated SQLite database. `internal/lifecycle.ImportGate`
-is the shared internal API/worker import entry point. This milestone has no
-IOS XE write adapter, CSR generator, issuer, worker scheduler or HTTP lifecycle
-wiring. The existing read-only Provider continues to return 501 for mutations.
+is the shared internal API/worker import entry point. The import gate uses a
+counting test adapter; real import, issuance, scheduling and HTTP lifecycle
+wiring remain later milestones. The read-only Provider returns 501 for mutations.
+The subsequent [CSR component](device-csr.md) adds schema v2 public CSR artifacts,
+atomic generation intent/result recording and an opt-in SSH adapter; the import
+adapter and signing/activation paths remain future work.
 
 ## Ownership and correlation
 
