@@ -1,0 +1,44 @@
+{
+  "scope": "Immutable source review and protocol references; not live AD DNS, KDC or ILM resolver acceptance.",
+  "sources": [
+    {
+      "repository": "OmniTrustILM/core",
+      "tag": "2.19.0",
+      "commit": "eb5e9096fb0b7ff56c911184ff8601c615f83436",
+      "gitBlob": "c19126b31850803bb19efd484a4f2ff768b6159b",
+      "url": "https://github.com/OmniTrustILM/core/blob/eb5e9096fb0b7ff56c911184ff8601c615f83436/src/main/java/com/otilm/core/service/acme/impl/AcmeServiceImpl.java",
+      "observation": "validateDnsChallenge iterates attributes but calls record.get() once per attribute. It does not iterate all values in the TXT attribute. Current SingleTXT mode rejects coexistence rather than deleting foreign values."
+    },
+    {
+      "module": "github.com/bodgit/gssapi",
+      "version": "v0.0.4",
+      "commit": "c2390d979334d3d3ec05b36d8cc64c703a4ef2df",
+      "url": "https://github.com/bodgit/gssapi/tree/c2390d979334d3d3ec05b36d8cc64c703a4ef2df",
+      "observation": "Explicit pure-Go Kerberos configuration/password initiator and MIC methods; configuration is raw contents. Login/service-ticket APIs do not accept context."
+    },
+    {
+      "module": "github.com/jcmturner/gokrb5/v8",
+      "version": "v8.4.4",
+      "url": "https://github.com/jcmturner/gokrb5/tree/v8.4.4",
+      "observation": "Pinned Kerberos config parser and cryptographic dependency of bodgit/gssapi. Only explicit AES enctypes and pinned KDCs are accepted by this adapter."
+    },
+    {
+      "module": "github.com/miekg/dns",
+      "version": "v1.1.73",
+      "commit": "d854399da1ee385b432e8b07f79e53bbfc1ab1b0",
+      "url": "https://github.com/miekg/dns/tree/d854399da1ee385b432e8b07f79e53bbfc1ab1b0",
+      "observation": "RFC2136 packet helpers and TSIG provider support; ExchangeContext verifies present TSIG but does not require one. This adapter explicitly requires signed authoritative and UPDATE replies."
+    }
+  ],
+  "protocols": [
+    {"url":"https://www.rfc-editor.org/rfc/rfc2136.html","sections":["2.4.2","2.4.3","2.5.4","3.5","3.8"],"purpose":"Full-set prerequisites, exact-RDATA deletes, atomicity and minimal UPDATE response format"},
+    {"url":"https://www.rfc-editor.org/rfc/rfc3645.html","purpose":"GSS TKEY mode 3, mutual establishment and final-response signature verification"},
+    {"url":"https://learn.microsoft.com/en-us/windows-server/networking/dns/dynamic-update","purpose":"AD-integrated secure dynamic update and record permissions"},
+    {"url":"https://docs.oracle.com/en/java/javase/25/docs/api/java.naming/javax/naming/directory/Attribute.html#get()","purpose":"Single-value Attribute.get semantics and unordered value selection"}
+  ],
+  "unverified": [
+    "Actual KDC/SPN/AES/GSS-TSIG interoperability and AD DNS node lifecycle ACLs",
+    "Actual ILM resolver view, TXT formatting and concurrent-value validation",
+    "Private success/failure/cancellation/restart cleanup acceptance and credential host wiring"
+  ]
+}

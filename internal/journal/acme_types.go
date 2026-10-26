@@ -40,6 +40,8 @@ type ACMERecord struct {
 	Challenges                            []ACMEChallenge
 	Attempts                              int
 	NextAttemptAt                         time.Time
+	// Omit false to preserve canonical records written before schema v4.
+	CancelRequested bool `json:",omitempty"`
 }
 
 var acmeReference = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9:/.@_-]{0,255}$`)
@@ -100,7 +102,7 @@ func validACMERecord(r ACMERecord) bool {
 	return true
 }
 func acmeChangeAllowed(old, next ACMERecord) bool {
-	if !validACMERecord(next) || old.Binding != next.Binding || old.CSRSHA256 != next.CSRSHA256 || next.Attempts < old.Attempts || old.OrderURL != "" && (old.OrderURL != next.OrderURL || old.FinalizeURL != next.FinalizeURL || !slices.Equal(old.AuthorizationURLs, next.AuthorizationURLs)) || old.CertificateURL != "" && old.CertificateURL != next.CertificateURL {
+	if !validACMERecord(next) || old.Binding != next.Binding || old.CSRSHA256 != next.CSRSHA256 || old.CancelRequested && !next.CancelRequested || next.Attempts < old.Attempts || old.OrderURL != "" && (old.OrderURL != next.OrderURL || old.FinalizeURL != next.FinalizeURL || !slices.Equal(old.AuthorizationURLs, next.AuthorizationURLs)) || old.CertificateURL != "" && old.CertificateURL != next.CertificateURL {
 		return false
 	}
 	allowed := old.Stage == next.Stage || old.Stage == ACMEPreparing && next.Stage == ACMECreating || old.Stage == ACMECreating && (next.Stage == ACMEBound || next.Stage == ACMEPreparing) || old.Stage == ACMEBound && (next.Stage == ACMEFinalizing || next.Stage == ACMEInvalid) || old.Stage == ACMEFinalizing && (next.Stage == ACMEIssued || next.Stage == ACMEInvalid || next.Stage == ACMEBound)

@@ -6,6 +6,8 @@
 | Go SDK | v1.1.0, `1a6c93aae95e32da738c5f830459a9f344ab0394` | Official scaffolding selected for characterization |
 | Go | 1.26.10 / 1.27.3 in CI | Supported release lines with current security patches |
 | Device | Cisco C8000V, IOS XE 26.1 family | Model reference only; lab capability evidence is pending |
+| DNS packets | miekg/dns v1.1.73 | Native RFC 2136 and GSS TSIG framing; actual AD behavior remains #15 |
+| Kerberos | bodgit/gssapi v0.0.4 / gokrb5 v8.4.4 | Pure-Go explicit credentials and AES configuration; live KDC acceptance remains #15 |
 
 The SDK's generated Entity v1 models declare API version **2.20.0-SNAPSHOT**.
 Its module version does not assert compatibility with ILM 2.19.0. No live Core
@@ -39,6 +41,18 @@ observation tests and manifest remain unchanged. This resolves K-001 for the
 offline connector boundary; actual Core acceptance is still pending C-009.
 
 ## Other boundaries still to validate
+
+### K-002: ILM 2.19.0 concurrent TXT validation
+
+The pinned Core `validateDnsChallenge` calls JNDI `Attribute.get()` once per
+attribute, rather than enumerating every value in the TXT attribute. A multi-TXT
+RRset can therefore fail even when its expected challenge is present. The DNS
+backend defaults to `SingleTXT`, rejects existing challenge values and puts its
+ownership markers at a separate name. `VerifiedMultiTXT` needs actual private
+validator/view evidence; backend concurrency tests do not resolve K-002. See
+[source references and behavior](ad-dns01.md#ilm-2190-validation-boundary).
+
+### Remaining integration checks
 
 - The boundary supports only single-value **v3 string** request attributes,
   with exact UUID/name pairs and no reference indirection. It rejects v2,

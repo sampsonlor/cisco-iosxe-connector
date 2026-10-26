@@ -12,7 +12,9 @@ The [certificate gate](certificate-policy.md) now binds a validated leaf to the
 recorded CSR and approved issuance policy before CERT_READY.
 The [external-CSR ACME workflow](acme-external-csr.md) adds schema v3 public
 account/order association, separate CAS progress and retry timestamps. It keeps
-the original CSR and order across timeouts/restarts; live DNS remains #11.
+the original CSR and order across timeouts/restarts. The [AD DNS backend](ad-dns01.md)
+adds schema v4 challenge ownership, separate markers and CAS update/cleanup
+intents. Actual KDC/AD DNS and resolver acceptance remains private #15.
 
 ## Ownership and correlation
 
@@ -142,7 +144,8 @@ SQLite consistency including the WAL. Keep private directories owner-only; on
 Windows configure an ACL, since Go's 0700/0600 mode bits do not establish one.
 
 Entity metadata remains in its existing separate store. Operation records contain
-public identity/digest correlation and state, not certificate private keys,
+identity/digest correlation and state; DNS claims additionally contain short-lived
+challenge TXT values and random markers for reference-only cleanup. They contain no certificate private keys,
 passwords, raw transcripts or arbitrary diagnostic error text. They are still
 private operational data. No new public workflow, credential input or live test
 is added by this item.

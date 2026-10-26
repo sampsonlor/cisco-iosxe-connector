@@ -11,8 +11,10 @@ include the opt-in SSH adapter and public validation, with private write accepta
 still pending. [Certificate acceptance](certificate-policy.md) validates recorded
 CSR, identity/purpose/time, pinned chain and trusted template/permission evidence
 before CERT_READY. The [ACME library](acme-external-csr.md) reuses the saved CSR
-and original order with bounded protocol/recovery tests. Real DNS, private
-issuance acceptance, import, activation and an authenticated host remain planned.
+and original order with bounded protocol/recovery tests. The
+[AD DNS backend](ad-dns01.md) implements native GSS-TSIG and durable exact-value
+cleanup. Private DNS/issuance acceptance, import, activation and an authenticated
+host remain planned.
 Names and network details below are synthetic.
 
 ```mermaid
@@ -35,8 +37,11 @@ flowchart TB
         NC[NETCONF adapter]
         SSH[Constrained SSH adapter]
         Probe[Independent TLS probe]
+        DNSSolver[AD DNS solver: exact challenge and separate marker]
         API --> Engine
         Worker --> Engine
+        Worker --> DNSSolver
+        DNSSolver <--> Journal
         Engine <--> Journal
         Engine --> Policy --> Evidence
         Engine --> NC
@@ -46,7 +51,7 @@ flowchart TB
     Core --> API
     Worker --> ACME
     Worker -->|Request inventory sync| Core
-    Worker -->|Only owned TXT records, if DNS-01 selected| DNS[DNS service]
+    DNSSolver -->|GSS-TSIG atomic TXT update| DNS[Approved Microsoft AD DNS]
     ACME -->|Validate challenge| DNS
     NC --> PKI
     SSH --> PKI[IOS XE PKI: active, staged and rollback Trustpoints]
