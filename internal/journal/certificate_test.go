@@ -110,6 +110,34 @@ func TestValidatedCertificateUsesRecordedCSRAndDurableCAS(t *testing.T) {
 	if _, err := s.CertificateValidated(ctx, r.Ref(), r.Revision+1, proof); !errors.Is(err, ErrConflict) {
 		t.Fatal("stale revision accepted", err)
 	}
+	unrelated := csrResult(t)
+	originalRequest := request
+	request, err = x509.ParseCertificateRequest(unrelated.DER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelatedLeaf := leaf(20, "router.example.test")
+	request = originalRequest
+	unrelatedProof, err := validator.Validate(ctx, unrelated, csrSpec(), unrelatedLeaf, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CertificateValidated(ctx, r.Ref(), r.Revision, unrelatedProof); !errors.Is(err, ErrCorrelation) {
+		t.Fatal("receipt for another recorded CSR accepted", err)
+	}
+	if _, err := s.db.Exec("CREATE TRIGGER reject_certificate BEFORE UPDATE OF state ON operations WHEN NEW.state='CERT_READY' BEGIN SELECT RAISE(ABORT,'synthetic diagnostic'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CertificateValidated(ctx, r.Ref(), r.Revision, proof); !errors.Is(err, ErrStore) || strings.Contains(err.Error(), "synthetic diagnostic") {
+		t.Fatal("failed commit accepted or exposed SQL diagnostics", err)
+	}
+	unchanged, err := s.Get(ctx, r.Ref())
+	if err != nil || unchanged != r {
+		t.Fatal("failed receipt commit changed record", err)
+	}
+	if _, err := s.db.Exec("DROP TRIGGER reject_certificate"); err != nil {
+		t.Fatal(err)
+	}
 	ready, err := s.CertificateValidated(ctx, r.Ref(), r.Revision, proof)
 	if err != nil || ready.State != CertReady || ready.CertificateSHA256 != certpolicy.SHA256(valid) {
 		t.Fatal("validated state did not commit", err)

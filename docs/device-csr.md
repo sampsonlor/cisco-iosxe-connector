@@ -53,7 +53,8 @@ bytes. Wildcards, IP/email/URI SANs, DN delimiters and unapproved algorithms are
 rejected. The validator checks the CSR signature, exact Subject/SAN, RSA size and
 exponent, expected device SPKI and permitted extensions. This does not establish
 that AD CS will accept the request or that a future certificate meets RA/template,
-EKU, validity or chain policy; #9 handles those checks.
+EKU, validity or chain policy; [the certificate gate](certificate-policy.md)
+handles those checks against current trusted enrollment evidence.
 
 ## Generation sequence
 
@@ -147,5 +148,6 @@ contacted by these tests.
 The next private test remains #15 / L-002. It must verify the actual interactive
 profile, command permissions/output, reserved unused names, independent recovery
 access and time synchronization before any write. #6's NTP deferral does not
-waive this requirement. After #8, the next backlog item is #9 for CSR/certificate,
-chain and AD CS policy matching; real inactive import and observation follow #12.
+waive this requirement. Certificate/chain and AD CS policy matching are implemented
+in #9; external-CSR ACME orders follow #10, and real inactive import and observation
+follow #12.

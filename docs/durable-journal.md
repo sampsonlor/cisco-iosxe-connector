@@ -8,6 +8,8 @@ wiring remain later milestones. The read-only Provider returns 501 for mutations
 The subsequent [CSR component](device-csr.md) adds schema v2 public CSR artifacts,
 atomic generation intent/result recording and an opt-in SSH adapter; the import
 adapter and signing/activation paths remain future work.
+The [certificate gate](certificate-policy.md) now binds a validated leaf to the
+recorded CSR and approved issuance policy before CERT_READY.
 
 ## Ownership and correlation
 
@@ -46,9 +48,9 @@ stateDiagram-v2
     [*] --> PRECHECK: unique request / service ownership
     PRECHECK --> FAILED_NO_SWITCH: abort before any mutation intent
     PRECHECK --> KEY_CREATING: persist key intent
-    KEY_CREATING --> CSR_READY: later CSR engine records its result
+    KEY_CREATING --> CSR_READY: CSR engine records verified public artifacts
     CSR_READY --> AWAITING_ISSUANCE
-    AWAITING_ISSUANCE --> CERT_READY: later validator binds certificate SHA256
+    AWAITING_ISSUANCE --> CERT_READY: validator receipt binds certificate SHA256
     CERT_READY --> IMPORTING: commit intent before dispatch
     IMPORTING --> STAGED: importer succeeds and completion commits
     IMPORTING --> IMPORTING: uncertain result / restart; no redispatch
@@ -100,10 +102,13 @@ sequenceDiagram
     end
 ```
 
-`CertificateReady` is a trusted internal assertion by a future validator; hashing
-alone does not verify X.509, CSR key, SAN/EKU, validity, template or chain. The gate
-does not accept raw certificates or generate keys/orders. Before production wiring,
-#8/#9/#12 must implement those semantics and device observation. The importer must
+`CertificateReady` is retained for the digest-only foundation harness and rejects
+operations with a recorded CSR. Runtime `CertificateValidated` requires a fresh
+opaque certificate-policy receipt matching the saved CSR and approved policy,
+and atomically commits CERT_READY with its history. The shared certificate gate
+revalidates time and enrollment evidence even on repeated acceptance. No receipt
+or permission grant is restored from SQLite. Before production import, #12 must
+recheck the actual leaf/policy evidence, device key and baseline. The importer must
 honor context deadlines and return only when it has stopped issuing requests; it
 must not start detached background writes or call `Store.Close` itself.
 

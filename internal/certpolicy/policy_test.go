@@ -133,6 +133,10 @@ func (f *fixture) leaf(t *testing.T, change func(*x509.Certificate)) []byte {
 }
 func (f *fixture) validator(t *testing.T, p Policy, clockChange func(*TimeReading), proofChange func(*EnrollmentEvidence)) *Validator {
 	t.Helper()
+	// The trusted evidence fixture owns its snapshot independently of the
+	// constructor input, including version pointers mutated by boundary tests.
+	p.Template = cloneTemplate(p.Template)
+	p.IssuerSHA256 = append([]string(nil), p.IssuerSHA256...)
 	var v *Validator
 	clock := clockFunc(func(context.Context) (TimeReading, error) {
 		r := TimeReading{Now: f.now, Synchronized: true, ObservedAt: f.now, Uncertainty: time.Second}
@@ -142,7 +146,7 @@ func (f *fixture) validator(t *testing.T, p Policy, clockChange func(*TimeReadin
 		return r, nil
 	})
 	proof := evidenceFunc(func(_ context.Context, ref string) (EnrollmentEvidence, error) {
-		e := EnrollmentEvidence{Reference: ref, SnapshotSHA256: strings.Repeat("d", 64), PolicySHA256: v.Digest(), RAProfileID: p.RAProfileID, AuthorityID: p.AuthorityID, PrincipalRef: p.PrincipalRef, IssuerSHA256: p.IssuerSHA256[0], Template: p.Template, ObservedAt: f.now.Add(-time.Minute), ValidUntil: f.now.Add(time.Hour), RABindingVerified: true, Published: true, CAReadTemplate: true, CARequestCertificates: true, TemplateRead: true, TemplateEnroll: true, SubjectSupplyAllowed: true, SANSupplyAllowed: true}
+		e := EnrollmentEvidence{Reference: ref, SnapshotSHA256: strings.Repeat("d", 64), PolicySHA256: v.Digest(), RAProfileID: p.RAProfileID, AuthorityID: p.AuthorityID, PrincipalRef: p.PrincipalRef, IssuerSHA256: p.IssuerSHA256[0], Template: cloneTemplate(p.Template), ObservedAt: f.now.Add(-time.Minute), ValidUntil: f.now.Add(time.Hour), RABindingVerified: true, Published: true, CAReadTemplate: true, CARequestCertificates: true, TemplateRead: true, TemplateEnroll: true, SubjectSupplyAllowed: true, SANSupplyAllowed: true}
 		if proofChange != nil {
 			proofChange(&e)
 		}
@@ -209,7 +213,8 @@ func TestApprovedChainAndLeafOnlyBundle(t *testing.T) {
 		t.Fatal("approved cached bundle did not support leaf-only input", err)
 	}
 	unknown, _ := makeCA(t, "Unknown root", f.now, nil, nil)
-	for name, chain := range map[string][][]byte{"unknown-root": {f.issuer.Raw, unknown.Raw}, "leaf-as-CA": {leaf}, "duplicate": {f.issuer.Raw, f.issuer.Raw}, "malformed": {[]byte("invalid")}} {
+	unrelated, _ := makeCA(t, "Unrelated intermediate", f.now, f.root, f.rootKey)
+	for name, chain := range map[string][][]byte{"unknown-root": {f.issuer.Raw, unknown.Raw}, "unrelated-CA": {f.issuer.Raw, unrelated.Raw}, "leaf-as-CA": {leaf}, "duplicate": {f.issuer.Raw, f.issuer.Raw}, "malformed": {[]byte("invalid")}} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := trusted.Validate(context.Background(), f.material, f.spec, leaf, chain); err == nil {
 				t.Fatal("unapproved chain accepted")

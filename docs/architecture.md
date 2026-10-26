@@ -8,7 +8,10 @@ Certificate inventory and transport-to-Provider wiring are implemented in
 The [durable journal and shared import gate](durable-journal.md) are implemented
 in `internal/journal` and `internal/lifecycle`. [Device CSR components](device-csr.md)
 include the opt-in SSH adapter and public validation, with private write acceptance
-still pending. Actual import, issuance, activation and an authenticated host remain planned.
+still pending. [Certificate acceptance](certificate-policy.md) validates recorded
+CSR, identity/purpose/time, pinned chain and trusted template/permission evidence
+before CERT_READY. Actual import, issuance, activation and an authenticated host
+remain planned.
 Names and network details below are synthetic.
 
 ```mermaid
@@ -25,6 +28,8 @@ flowchart TB
         API[Entity Provider v1]
         Worker[ACME worker]
         Engine[Shared lifecycle and deployment engine]
+        Policy[Certificate policy validator]
+        Evidence[Trusted host clock and private enrollment evidence]
         Journal[(Durable journal and device-service lock)]
         NC[NETCONF adapter]
         SSH[Constrained SSH adapter]
@@ -32,6 +37,7 @@ flowchart TB
         API --> Engine
         Worker --> Engine
         Engine <--> Journal
+        Engine --> Policy --> Evidence
         Engine --> NC
         Engine --> SSH
         Engine --> Probe
